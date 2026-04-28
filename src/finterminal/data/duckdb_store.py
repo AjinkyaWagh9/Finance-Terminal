@@ -179,15 +179,25 @@ def record_analysis(
     bear_case: str,
     confidence: float,
     sources: dict[str, Any] | None = None,
+    payload: dict[str, Any] | None = None,
 ) -> str:
-    """Returns the inserted row's id (uuid4)."""
+    """Returns the inserted row's id (uuid4).
+
+    `payload` is the full Analyst parsed dict (variant/conviction/assumptions/
+    what_would_change in addition to bull/bear/confidence). Stored as JSON in
+    the additive `payload_json` column for use by the result-cache rehydration.
+    """
     aid = str(uuid.uuid4())
     conn.execute(
         """
-        INSERT INTO analyses (id, ticker, bull_case, bear_case, confidence, sources_json)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO analyses (id, ticker, bull_case, bear_case, confidence, sources_json, payload_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        [aid, ticker, bull_case, bear_case, confidence, json.dumps(sources or {})],
+        [
+            aid, ticker, bull_case, bear_case, confidence,
+            json.dumps(sources or {}),
+            json.dumps(payload) if payload is not None else None,
+        ],
     )
     return aid
 
@@ -204,3 +214,123 @@ def latest_analysis(conn: duckdb.DuckDBPyConnection, ticker: str) -> dict | None
     out = dict(zip(cols, row))
     out["sources"] = json.loads(out.pop("sources_json") or "{}")
     return out
+
+
+# ---------- critiques (Phase 2 / 4a) ----------
+
+def record_critique(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    analysis_id: str,
+    verdict: str | None,
+    issues_md: str,
+    missing_md: str,
+    confidence_adj: float | None,
+    raw_text: str,
+    model: str | None,
+    tokens_in: int,
+    tokens_out: int,
+    degraded: bool,
+    error: str | None,
+) -> str:
+    """Returns the inserted critique row's id (uuid4)."""
+    cid = str(uuid.uuid4())
+    conn.execute(
+        """
+        INSERT INTO critiques (
+            id, analysis_id, verdict, issues_md, missing_md,
+            confidence_adj, raw_text, model, tokens_in, tokens_out,
+            degraded, error
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            cid, analysis_id, verdict, issues_md, missing_md,
+            confidence_adj, raw_text, model, tokens_in, tokens_out,
+            degraded, error,
+        ],
+    )
+    return cid
+
+
+def recent_analysis(
+    conn: duckdb.DuckDBPyConnection,
+    ticker: str,
+    ttl_s: int,
+) -> dict | None:
+    """Return the most recent analysis (joined with its latest critique) for `ticker`
+    if its created_at is within `ttl_s` seconds of now. Otherwise None.
+
+    Result shape (matches the orchestrator's AnalysisResult contract):
+      {
+        "analysis_id": str,
+        "ticker": str,
+        "created_at": datetime,
+        "analyst_payload": dict,        # rehydrated from payload_json (or {} if NULL)
+        "critic_payload": dict | None,  # None when no critique row OR degraded=True
+        "degraded": bool,
+        "critic_error": str | None,
+      }
+    """
+    if ttl_s < 0:
+        return None
+    from datetime import datetime as _dt, timedelta as _td
+    cutoff = _dt.now() - _td(seconds=ttl_s)
+    row = conn.execute(
+        """
+        SELECT id, ticker, created_at, bull_case, bear_case, confidence,
+               sources_json, payload_json
+        FROM analyses
+        WHERE ticker = ? AND created_at > ?
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        [ticker, cutoff],
+    ).fetchone()
+    if not row:
+        return None
+    aid, t, created, bull, bear, conf, sources_json, payload_json = row
+
+    analyst_payload: dict = json.loads(payload_json) if payload_json else {}
+    # Always include the columns the panel needs even if payload_json is empty
+    # (e.g. for analyses written before 4a):
+    analyst_payload.setdefault("ticker", t)
+    analyst_payload.setdefault("bull_case", bull)
+    analyst_payload.setdefault("bear_case", bear)
+    analyst_payload.setdefault("confidence", conf)
+
+    crit_row = conn.execute(
+        """
+        SELECT verdict, issues_md, missing_md, confidence_adj, raw_text,
+               degraded, error
+        FROM critiques
+        WHERE analysis_id = ?
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        [aid],
+    ).fetchone()
+
+    critic_payload: dict | None = None
+    degraded = False
+    critic_error: str | None = None
+    if crit_row:
+        verdict, issues_md, missing_md, conf_adj, raw_text, degraded_flag, err = crit_row
+        degraded = bool(degraded_flag)
+        critic_error = err
+        if not degraded:
+            critic_payload = {
+                "verdict": verdict,
+                "issues_md": issues_md,
+                "missing_md": missing_md,
+                "confidence_adj": conf_adj,
+                "raw_text": raw_text,
+            }
+
+    return {
+        "analysis_id": aid,
+        "ticker": t,
+        "created_at": created,
+        "analyst_payload": analyst_payload,
+        "critic_payload": critic_payload,
+        "degraded": degraded,
+        "critic_error": critic_error,
+    }
