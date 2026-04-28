@@ -29,7 +29,12 @@ def help_panel() -> Panel:
         "  [cyan]/analyze[/] SYMBOL         supervised bull/bear (model per agents.yaml)\n"
         "  [cyan]/help[/]                   this message\n"
         "  [cyan]/quit[/]                   exit\n\n"
-        "[dim]Indian symbols auto-suffix to .NS (e.g. RELIANCE → RELIANCE.NS).[/]"
+        "[bold]Symbol forms[/]\n"
+        "  [dim]Bare symbols default to NSE (Indian-first).[/]\n"
+        "  [cyan]RELIANCE[/]                  → RELIANCE.NS  (NSE)\n"
+        "  [cyan]NSE:HDFC[/]                  → HDFC.NS\n"
+        "  [cyan]BSE:RELIANCE[/]              → RELIANCE.BO\n"
+        "  [cyan]US:AAPL[/]  [cyan]US:TSLA[/]          → bare US ticker (yfinance / FMP / Benzinga)"
     )
     return Panel(body, title="help", border_style="cyan")
 

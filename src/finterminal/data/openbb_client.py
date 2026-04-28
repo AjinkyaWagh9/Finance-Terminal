@@ -18,10 +18,17 @@ _HISTORICAL_LOOKBACK_DAYS = 730
 
 logger = logging.getLogger(__name__)
 
-# Providers to try in order. yfinance covers Indian + US for free.
+# Provider chains, tried in order; failures fall through silently to the next.
+# - Quotes & fundamentals: yfinance covers India + US for free with clean
+#   pe_ttm / eps_ttm fields. FMP free tier blocks .NS (Premium endpoint)
+#   AND its `metrics` returns derived ratios but not raw PE/EPS — adding it
+#   to fundamentals chain produces None for headline numbers. Defer FMP
+#   enrichment to a Phase 3 multi-endpoint US strategy.
+# - News: Benzinga gives high-quality US-equity headlines; .NS / .BO will
+#   fail and degrade to yfinance automatically.
 _QUOTE_PROVIDERS = ["yfinance"]
 _FUNDAMENTAL_PROVIDERS = ["yfinance"]
-_NEWS_PROVIDERS = ["yfinance"]
+_NEWS_PROVIDERS = ["benzinga", "yfinance"]
 
 
 def _to_dict(obj: Any) -> dict:
@@ -135,6 +142,14 @@ def fetch_news(ticker: str, limit: int = 20) -> list[dict]:
     """Returns recent news items normalized to our schema."""
     from openbb import obb
 
+    # Most providers don't tag news items with their own brand name in a
+    # `source` field — Benzinga is all "Benzinga", yfinance carries the
+    # underlying publisher. Use a per-provider default when the payload omits it.
+    _provider_default_source = {
+        "benzinga": "Benzinga",
+        "tiingo": "Tiingo",
+    }
+
     last_err: Exception | None = None
     for provider in _NEWS_PROVIDERS:
         try:
@@ -146,7 +161,10 @@ def fetch_news(ticker: str, limit: int = 20) -> list[dict]:
                 items.append({
                     "id": _first_present(d, "id", "url", "title"),
                     "ticker": ticker,
-                    "source": _first_present(d, "source", "publisher"),
+                    "source": _first_present(
+                        d, "source", "publisher",
+                        default=_provider_default_source.get(provider, provider),
+                    ),
                     "headline": _first_present(d, "title", "headline"),
                     "url": _first_present(d, "url"),
                     "published_at": _first_present(d, "date", "published", "published_at"),

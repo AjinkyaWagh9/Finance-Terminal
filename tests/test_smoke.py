@@ -111,9 +111,18 @@ def test_duckdb_migration_runs():
 def test_nse_normalize():
     from finterminal.data.nse import normalize_ticker
 
+    # Defaults: bare symbol → NSE (Indian-first)
     assert normalize_ticker("RELIANCE") == "RELIANCE.NS"
     assert normalize_ticker("RELIANCE.NS") == "RELIANCE.NS"
     assert normalize_ticker("hdfc", "BSE") == "HDFC.BO"
+
+    # Explicit exchange prefix
+    assert normalize_ticker("US:AAPL") == "AAPL"
+    assert normalize_ticker("us:tsla") == "TSLA"
+    assert normalize_ticker("NSE:HDFC") == "HDFC.NS"
+    assert normalize_ticker("BSE:RELIANCE") == "RELIANCE.BO"
+    # Idempotent on suffix even with prefix
+    assert normalize_ticker("NSE:RELIANCE.NS") == "RELIANCE.NS"
 
 
 def test_analysis_parser_extracts_all_sections():
