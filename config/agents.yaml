@@ -1,0 +1,45 @@
+# FINTERMINAL — Agent → Model Assignments
+# Agent code never names a model. Edit this file to swap.
+# See ../MODEL-SWAP-GUIDE.md for playbooks.
+
+agents:
+  # ---- Phase 1 ----
+  supervisor:
+    primary: claude-sonnet-4-6
+    fallbacks: [claude-opus-4-7]
+    description: "Decomposes user query, routes to specialists, synthesizes final answer"
+
+  data:
+    primary: claude-sonnet-4-6     # Phase 1 uses Claude; Phase 2 swaps to qwen3:8b once Ollama is set up
+    fallbacks: []
+    description: "Quotes, fundamentals, screening via OpenBB / NSE / BSE"
+
+  news:
+    primary: claude-sonnet-4-6     # Phase 1 uses Claude; Phase 2 swaps to qwen3:8b
+    fallbacks: []
+    description: "RSS aggregation, dedupe, clustering, summarization"
+
+  critic:
+    primary: claude-sonnet-4-6
+    fallbacks: [claude-opus-4-7]
+    description: "Adversarial review of /analyze output. Flags missing data, weak assumptions"
+
+  bull_bear:
+    primary: claude-sonnet-4-6
+    fallbacks: [claude-opus-4-7]
+    description: "Builds bull case + bear case with weighted factors"
+
+  # ---- Phase 2.5 (commented out until then) ----
+  # sentiment:
+  #   primary: grok-3-mini
+  #   fallbacks: []
+  #   enabled: false
+  # transcript:
+  #   extract: { primary: qwen3:8b, fallbacks: [claude-sonnet-4-6] }
+  #   synthesize: { primary: claude-sonnet-4-6, fallbacks: [claude-opus-4-7] }
+  # ceo_tracker: { primary: qwen3:8b, fallbacks: [claude-sonnet-4-6] }
+  # ownership: { primary: phi4-mini, fallbacks: [qwen3:8b] }
+  # quality: { primary: phi4-mini, fallbacks: [qwen3:8b] }
+  # comps: { primary: qwen3:8b, fallbacks: [claude-sonnet-4-6] }
+  # macro: { primary: phi4-mini, fallbacks: [qwen3:8b] }
+  # calendar: { primary: null }

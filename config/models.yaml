@@ -1,0 +1,53 @@
+# FINTERMINAL — Model Registry
+# Declares all models available to the system. Agents reference these by `name`.
+# To add a model: add an entry here and ensure the provider class exists in src/finterminal/llm/providers/.
+# See ../MODEL-SWAP-GUIDE.md for playbooks.
+
+models:
+  # ---- Anthropic (cloud, premium synthesis) ----
+  - name: claude-sonnet-4-6
+    provider: anthropic
+    api_id: claude-sonnet-4-6
+    context_window: 200000
+    cost_per_mtok_in: 3.0
+    cost_per_mtok_out: 15.0
+    capabilities: [reasoning, tool_use, vision, json_mode, synthesis]
+    tags: [cloud, premium, synthesis]
+
+  - name: claude-opus-4-7
+    provider: anthropic
+    api_id: claude-opus-4-7
+    context_window: 1000000
+    cost_per_mtok_in: 15.0
+    cost_per_mtok_out: 75.0
+    capabilities: [reasoning, tool_use, vision, json_mode, synthesis, deep_reasoning]
+    tags: [cloud, premium, deep-thinking]
+
+  # ---- Local via Ollama (Phase 2+) ----
+  - name: qwen3:8b
+    provider: ollama
+    api_id: qwen3:8b
+    context_window: 32768
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    capabilities: [reasoning, tool_use, multilingual, json_mode]
+    tags: [local, cheap, fast]
+
+  - name: phi4-mini
+    provider: ollama
+    api_id: phi4-mini
+    context_window: 16384
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    capabilities: [classification, json_mode]
+    tags: [local, very-fast, classifier]
+
+  # ---- xAI (Phase 2.5, optional sentiment) ----
+  - name: grok-3-mini
+    provider: xai
+    api_id: grok-3-mini
+    context_window: 131072
+    cost_per_mtok_in: 0.30
+    cost_per_mtok_out: 0.50
+    capabilities: [classification, live_search, x_data]
+    tags: [cloud, cheap, sentiment]
