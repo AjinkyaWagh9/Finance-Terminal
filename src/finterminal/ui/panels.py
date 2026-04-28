@@ -174,8 +174,25 @@ def _confidence_gauge(conf: float) -> Text:
     return bar
 
 
+_CONVICTION_STYLE = {
+    "Conviction Long": ("bold green", "▲▲"),
+    "Watch Long": ("yellow", "▲"),
+    "Avoid": ("dim white", "—"),
+    "Conviction Short": ("bold red", "▼▼"),
+    "Pair-Short": ("red", "▼"),
+}
+
+
 def analysis_panel(analysis: dict) -> Panel:
-    """analysis = {ticker, bull_case, bear_case, confidence, assumptions, what_would_change}."""
+    """analysis = {ticker, variant_perception, bull_case, bear_case, conviction,
+                  confidence, assumptions, what_would_change}."""
+    variant = (analysis.get("variant_perception") or "").strip()
+    variant_panel = (
+        Panel(variant, title="variant perception", border_style="magenta")
+        if variant and "no consensus" not in variant.lower()
+        else None
+    )
+
     bull = Panel(
         analysis.get("bull_case") or "[dim]—[/]",
         title="bull",
@@ -192,12 +209,21 @@ def analysis_panel(analysis: dict) -> Panel:
     body.add_column(ratio=1)
     body.add_row(bull, bear)
 
+    # Conviction + confidence on a single line
+    conv = analysis.get("conviction")
     confidence = analysis.get("confidence")
+    summary = Text()
+    if conv and conv in _CONVICTION_STYLE:
+        style, glyph = _CONVICTION_STYLE[conv]
+        summary.append(f"{glyph} {conv}", style=style)
+        summary.append("    ")
+    elif conv:
+        summary.append(f"conviction: {conv}    ", style="dim")
     if confidence is None:
-        conf_line = Text("confidence: —", style="dim")
+        summary.append("confidence: —", style="dim")
     else:
-        conf_line = Text("confidence  ")
-        conf_line.append(_confidence_gauge(float(confidence)))
+        summary.append("confidence  ")
+        summary.append(_confidence_gauge(float(confidence)))
 
     assumptions = analysis.get("assumptions") or "[dim]—[/]"
     wwcm = analysis.get("what_would_change") or "[dim]—[/]"
@@ -212,8 +238,10 @@ def analysis_panel(analysis: dict) -> Panel:
 
     stack = Table.grid(expand=True)
     stack.add_column()
+    if variant_panel is not None:
+        stack.add_row(variant_panel)
     stack.add_row(body)
-    stack.add_row(conf_line)
+    stack.add_row(summary)
     stack.add_row(footer)
 
     ts = analysis.get("created_at") or datetime.now(timezone.utc)

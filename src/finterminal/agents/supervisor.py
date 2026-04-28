@@ -26,12 +26,22 @@ _PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "analyst.md"
 
 
 _SECTIONS = (
+    "Variant Perception",
     "Bull Case",
     "Bear Case",
+    "Conviction",
     "Confidence",
     "Assumptions",
     "What Would Change My Mind",
 )
+
+_VALID_CONVICTION = {
+    "Conviction Long",
+    "Watch Long",
+    "Avoid",
+    "Conviction Short",
+    "Pair-Short",
+}
 
 
 def _load_system_prompt() -> str:
@@ -66,9 +76,20 @@ def parse_analysis(text: str) -> dict:
             except ValueError:
                 confidence = None
 
+    conviction: str | None = None
+    raw_conv = sections.get("Conviction", "").strip()
+    if raw_conv:
+        # Match the first valid label as a substring; otherwise None
+        for label in _VALID_CONVICTION:
+            if label.lower() in raw_conv.lower():
+                conviction = label
+                break
+
     return {
+        "variant_perception": sections.get("Variant Perception", ""),
         "bull_case": sections.get("Bull Case", ""),
         "bear_case": sections.get("Bear Case", ""),
+        "conviction": conviction,
         "confidence": confidence,
         "assumptions": sections.get("Assumptions", ""),
         "what_would_change": sections.get("What Would Change My Mind", ""),
