@@ -13,8 +13,9 @@ wheels/
 .env
 .env.local
 
-# Local data (databases, vector stores, downloads)
-data/
+# Local data (databases, vector stores, downloads) — anchored to repo root
+# so it doesn't shadow src/finterminal/data/ source code.
+/data/
 *.duckdb
 *.duckdb.wal
 *.sqlite
