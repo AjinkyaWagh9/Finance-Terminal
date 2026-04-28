@@ -23,12 +23,21 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from typing import Any
 
-from openai import APIError, AsyncOpenAI, RateLimitError
+from openai import APIError, AsyncOpenAI, BadRequestError, RateLimitError
 
 from ..base import Completion, LLMProvider, Message, ModelMetadata, ProviderError, ToolSpec
 
 _DEFAULT_BASE_URL = "https://api.openai.com/v1"
+
+# OpenAI's newer reasoning-tier models (gpt-5 family + o-series) renamed
+# `max_tokens` → `max_completion_tokens` and only support temperature=1.
+_NEW_OPENAI_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+
+def _is_new_openai_model(api_id: str) -> bool:
+    return api_id.startswith(_NEW_OPENAI_PREFIXES)
 
 
 class OpenAICompatProvider(LLMProvider):
@@ -68,16 +77,26 @@ class OpenAICompatProvider(LLMProvider):
         api_messages: list[dict] = [{"role": "system", "content": system}]
         api_messages.extend({"role": m.role, "content": m.content} for m in messages)
 
+        # New-tier OpenAI models renamed max_tokens and pin temperature=1.
+        request_kwargs: dict[str, Any] = {
+            "model": self._meta.api_id,
+            "messages": api_messages,
+        }
+        if _is_new_openai_model(self._meta.api_id):
+            # Reasoning-tier models burn tokens on internal thought before any
+            # visible output appears. A 2000-cap can yield zero text. Floor at
+            # 8000 so the visible response actually has room to materialize.
+            request_kwargs["max_completion_tokens"] = max(max_tokens, 8000)
+            # temperature is not configurable for gpt-5 / o-series; defaults to 1
+        else:
+            request_kwargs["max_tokens"] = max_tokens
+            request_kwargs["temperature"] = temperature
+
         last_err: Exception | None = None
         for attempt in range(3):
             t0 = time.monotonic()
             try:
-                resp = await self._client.chat.completions.create(
-                    model=self._meta.api_id,
-                    messages=api_messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                )
+                resp = await self._client.chat.completions.create(**request_kwargs)
                 latency_ms = int((time.monotonic() - t0) * 1000)
                 choice = resp.choices[0]
                 text = choice.message.content or ""
@@ -95,6 +114,11 @@ class OpenAICompatProvider(LLMProvider):
             except RateLimitError as exc:
                 last_err = exc
                 await asyncio.sleep(2**attempt)
+            except BadRequestError as exc:
+                # 400s aren't retryable — fail fast with a clean message
+                raise ProviderError(
+                    f"OpenAI-compat call to {self._meta.name} rejected with 400: {exc}"
+                ) from exc
             except APIError as exc:
                 last_err = exc
                 if attempt == 2:

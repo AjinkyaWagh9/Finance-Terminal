@@ -7,8 +7,14 @@ for US fundamentals via env-var-keyed config.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
+
+# yfinance computes its default range from the system clock; if that clock is
+# ahead of where real market data ends, the default window slides into the future
+# and the response is empty. Always pass an explicit start_date 2 years back so
+# the request window overlaps available data.
+_HISTORICAL_LOOKBACK_DAYS = 730
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +70,8 @@ def fetch_quote(ticker: str) -> dict:
         # Yahoo's quote endpoint is intermittently flaky for Indian tickers (cookie/crumb auth).
         # Historical bars endpoint is more reliable — synthesize a quote from the last two closes.
         try:
-            hist = obb.equity.price.historical(ticker, provider=provider)
+            start = (datetime.now(timezone.utc).date() - timedelta(days=_HISTORICAL_LOOKBACK_DAYS)).isoformat()
+            hist = obb.equity.price.historical(ticker, provider=provider, start_date=start)
             rows = hist.results or []
             if rows:
                 last = _to_dict(rows[-1])

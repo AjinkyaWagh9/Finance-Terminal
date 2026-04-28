@@ -21,16 +21,28 @@ def test_llm_abstraction_loads():
 
 
 def test_supervisor_resolves_to_a_provider():
-    """Without ANTHROPIC_API_KEY set, the lookup raises a clear error."""
+    """Supervisor's primary must resolve to *some* registered model.
+
+    Whether the actual provider instantiates depends on which API key is set
+    (e.g., gpt-5-mini needs OPENAI_API_KEY; claude-sonnet-4-6 needs ANTHROPIC_API_KEY).
+    """
     from finterminal.llm import ProviderError, build_router
 
     router = build_router()
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        with pytest.raises(ProviderError, match="ANTHROPIC_API_KEY"):
-            router.for_agent("supervisor")
-    else:
+    registry = router._registry  # type: ignore[attr-defined]
+
+    cfg = router._agents.get("supervisor")  # type: ignore[attr-defined]
+    primary_name = cfg["primary"]
+    assert any(m.name == primary_name for m in registry.all()), (
+        f"supervisor.primary={primary_name} is not in models.yaml"
+    )
+
+    try:
         provider = router.for_agent("supervisor")
-        assert provider.metadata.name == "claude-sonnet-4-6"
+        assert provider.metadata.name == primary_name
+    except ProviderError as exc:
+        # Acceptable: the API key for the configured model isn't set in this env.
+        assert "API_KEY" in str(exc)
 
 
 def test_unknown_agent_errors_clearly():
