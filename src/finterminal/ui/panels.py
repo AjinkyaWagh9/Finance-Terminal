@@ -188,9 +188,19 @@ _CONVICTION_STYLE = {
 }
 
 
-def analysis_panel(analysis: dict) -> Panel:
+def analysis_panel(
+    analysis: dict,
+    critic: dict | None = None,
+    critic_error: str | None = None,
+) -> Panel:
     """analysis = {ticker, variant_perception, bull_case, bear_case, conviction,
-                  confidence, assumptions, what_would_change}."""
+                  confidence, assumptions, what_would_change}.
+
+    critic (optional) = {verdict, issues_md, missing_md, confidence_adj}.
+    critic_error (optional) = string explaining why Critic was unavailable.
+    Pass at most one of (critic, critic_error). When both are None, the panel
+    renders today's pre-4a layout — no behavioral regression for callers.
+    """
     variant = (analysis.get("variant_perception") or "").strip()
     variant_panel = (
         Panel(variant, title="variant perception", border_style="magenta")
@@ -214,7 +224,7 @@ def analysis_panel(analysis: dict) -> Panel:
     body.add_column(ratio=1)
     body.add_row(bull, bear)
 
-    # Conviction + confidence on a single line
+    # Conviction + confidence (with optional critic adjustment) on a single line
     conv = analysis.get("conviction")
     confidence = analysis.get("confidence")
     summary = Text()
@@ -229,6 +239,9 @@ def analysis_panel(analysis: dict) -> Panel:
     else:
         summary.append("confidence  ")
         summary.append(_confidence_gauge(float(confidence)))
+        if critic and critic.get("confidence_adj") is not None:
+            summary.append(f"  →  {critic['confidence_adj']:.2f} (critic)",
+                           style="bold yellow")
 
     assumptions = analysis.get("assumptions") or "[dim]—[/]"
     wwcm = analysis.get("what_would_change") or "[dim]—[/]"
@@ -248,6 +261,26 @@ def analysis_panel(analysis: dict) -> Panel:
     stack.add_row(body)
     stack.add_row(summary)
     stack.add_row(footer)
+
+    if critic is not None:
+        verdict = critic.get("verdict") or "?"
+        verdict_color = {
+            "ACCEPT": "green", "REVISE": "yellow", "REJECT": "red",
+        }.get(verdict, "white")
+        crit_body = Text()
+        crit_body.append(f"verdict: {verdict}\n", style=f"bold {verdict_color}")
+        if critic.get("issues_md"):
+            crit_body.append("\nIssues:\n", style="bold")
+            crit_body.append(critic["issues_md"] + "\n")
+        if critic.get("missing_md"):
+            crit_body.append("\nMissing:\n", style="bold")
+            crit_body.append(critic["missing_md"] + "\n")
+        stack.add_row(Panel(crit_body, title="critic", border_style=verdict_color))
+    elif critic_error is not None:
+        stack.add_row(Panel(
+            Text(f"Critic unavailable: {critic_error}", style="dim italic"),
+            title="critic", border_style="dim",
+        ))
 
     ts = analysis.get("created_at") or datetime.now(timezone.utc)
     subtitle = f"[dim]{ts.isoformat() if hasattr(ts, 'isoformat') else ts}[/]"
