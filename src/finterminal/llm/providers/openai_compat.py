@@ -73,6 +73,7 @@ class OpenAICompatProvider(LLMProvider):
         temperature: float = 0.7,
         tools: list[ToolSpec] | None = None,
         json_schema: dict | None = None,
+        cache_system: bool = False,  # accepted; OpenAI auto-caches stable prefixes ≥1024 tokens
     ) -> Completion:
         api_messages: list[dict] = [{"role": "system", "content": system}]
         api_messages.extend({"role": m.role, "content": m.content} for m in messages)

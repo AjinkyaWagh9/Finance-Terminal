@@ -21,6 +21,7 @@ class OllamaProvider(LLMProvider):
         temperature: float = 0.7,
         tools: list[ToolSpec] | None = None,
         json_schema: dict | None = None,
+        cache_system: bool = False,  # accepted; Ollama has no remote cache to mark
     ) -> Completion:
         raise ProviderError(
             "OllamaProvider is a Phase 1 stub. "

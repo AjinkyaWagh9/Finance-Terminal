@@ -66,6 +66,7 @@ class LLMProvider(Protocol):
         temperature: float = 0.7,
         tools: list[ToolSpec] | None = None,
         json_schema: dict | None = None,
+        cache_system: bool = False,
     ) -> Completion: ...
 
 

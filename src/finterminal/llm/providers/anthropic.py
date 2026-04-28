@@ -33,8 +33,18 @@ class AnthropicProvider(LLMProvider):
         temperature: float = 0.7,
         tools: list[ToolSpec] | None = None,
         json_schema: dict | None = None,
+        cache_system: bool = False,
     ) -> Completion:
         api_messages = [{"role": m.role, "content": m.content} for m in messages]
+
+        # Anthropic prompt caching: mark the system block as ephemeral (5min TTL).
+        # https://docs.anthropic.com/claude/docs/prompt-caching
+        if cache_system:
+            system_param: str | list[dict] = [
+                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            ]
+        else:
+            system_param = system
 
         last_err: Exception | None = None
         for attempt in range(3):
@@ -42,7 +52,7 @@ class AnthropicProvider(LLMProvider):
             try:
                 resp = await self._client.messages.create(
                     model=self._meta.api_id,
-                    system=system,
+                    system=system_param,
                     messages=api_messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
