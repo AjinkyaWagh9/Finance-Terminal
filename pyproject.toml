@@ -12,6 +12,7 @@ dependencies = [
     "chromadb>=1.5.8",
     "duckdb>=1.5.2",
     "httpx>=0.28.1",
+    "openai>=1.60.0",
     "openbb>=4.7.1",
     "pydantic>=2.13.3",
     "pydantic-settings>=2.14.0",

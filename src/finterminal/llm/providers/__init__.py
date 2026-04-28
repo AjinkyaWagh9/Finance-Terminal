@@ -6,11 +6,16 @@ To add a new provider: implement LLMProvider in a new module and add it here.
 from .anthropic import AnthropicProvider
 from .null import NullProvider
 from .ollama import OllamaProvider
+from .openai_compat import OpenAICompatProvider
 
+# `openai_compat` is the canonical name. The aliases let models.yaml use intuitive
+# `provider: openai` / `provider: xai` keys without needing separate classes — the
+# class is identical; only the api_key_env / base_url in each model entry differ.
 PROVIDERS = {
     "anthropic": AnthropicProvider,
     "ollama": OllamaProvider,
     "null": NullProvider,
-    # "xai": XAIProvider,                  # added in Phase 2.5
-    # "openai_compat": OpenAICompatProvider,  # added when needed
+    "openai_compat": OpenAICompatProvider,
+    "openai": OpenAICompatProvider,
+    "xai": OpenAICompatProvider,
 }

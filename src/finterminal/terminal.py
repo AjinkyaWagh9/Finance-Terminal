@@ -1,13 +1,21 @@
-"""REPL entrypoint. Day 4 fills in command dispatch."""
+"""REPL entrypoint for FINTERMINAL."""
 
 from __future__ import annotations
+
+import logging
+import os
 
 from dotenv import load_dotenv
 from rich.console import Console
 
+from .commands import dispatch
 from .ui.panels import banner
 
 load_dotenv()
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "WARNING"),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 console = Console()
 
 
@@ -24,14 +32,7 @@ def run() -> None:
         if line in ("/quit", "/exit"):
             console.print("[dim]bye.[/]")
             return
-        if line == "/help":
-            console.print(
-                "[bold]Phase 1 commands (Day 4 will wire them up):[/]\n"
-                "  /ticker SYMBOL\n  /news SYMBOL\n  /watch add|list|remove SYMBOL\n"
-                "  /analyze SYMBOL\n  /quit"
-            )
-            continue
-        console.print(f"[yellow]not implemented yet:[/] {line}")
+        dispatch(line, console)
 
 
 if __name__ == "__main__":

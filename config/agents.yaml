@@ -8,6 +8,13 @@ agents:
     primary: claude-sonnet-4-6
     fallbacks: [claude-opus-4-7]
     description: "Decomposes user query, routes to specialists, synthesizes final answer"
+    # Cost-tier alternatives — uncomment one to swap. See MODEL-SWAP-GUIDE.md.
+    #   ~10x cheaper than Claude Sonnet; lower reasoning quality:
+    # primary: gpt-5-mini
+    # fallbacks: [gpt-5, claude-sonnet-4-6]
+    #   ~60x cheaper than Claude Sonnet; classifier-grade only:
+    # primary: gpt-5-nano
+    # fallbacks: [gpt-5-mini, claude-sonnet-4-6]
 
   data:
     primary: claude-sonnet-4-6     # Phase 1 uses Claude; Phase 2 swaps to qwen3:8b once Ollama is set up

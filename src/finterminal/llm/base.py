@@ -44,6 +44,11 @@ class ModelMetadata:
     cost_per_mtok_out: float
     capabilities: frozenset[str] = field(default_factory=frozenset)
     tags: frozenset[str] = field(default_factory=frozenset)
+    # Optional fields for OpenAI-compatible providers (OpenAI, xAI, OpenRouter, Together, Groq, NVIDIA NIM).
+    # Anthropic provider ignores these.
+    api_key_env: str | None = None
+    base_url: str | None = None
+    base_url_env: str | None = None  # env var name; takes precedence over base_url if both set
 
 
 @runtime_checkable

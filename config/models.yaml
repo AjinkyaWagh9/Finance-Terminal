@@ -2,6 +2,8 @@
 # Declares all models available to the system. Agents reference these by `name`.
 # To add a model: add an entry here and ensure the provider class exists in src/finterminal/llm/providers/.
 # See ../MODEL-SWAP-GUIDE.md for playbooks.
+#
+# Pricing is per 1M tokens (USD). Verify against provider docs before relying on cost numbers.
 
 models:
   # ---- Anthropic (cloud, premium synthesis) ----
@@ -23,6 +25,38 @@ models:
     capabilities: [reasoning, tool_use, vision, json_mode, synthesis, deep_reasoning]
     tags: [cloud, premium, deep-thinking]
 
+  # ---- OpenAI (cloud, cost-tier alternatives to Claude) ----
+  # Verify pricing at https://platform.openai.com/docs/pricing
+  - name: gpt-5-nano
+    provider: openai
+    api_id: gpt-5-nano
+    api_key_env: OPENAI_API_KEY
+    context_window: 400000
+    cost_per_mtok_in: 0.05
+    cost_per_mtok_out: 0.40
+    capabilities: [classification, json_mode]
+    tags: [cloud, very-cheap, classifier]
+
+  - name: gpt-5-mini
+    provider: openai
+    api_id: gpt-5-mini
+    api_key_env: OPENAI_API_KEY
+    context_window: 400000
+    cost_per_mtok_in: 0.25
+    cost_per_mtok_out: 2.00
+    capabilities: [reasoning, tool_use, json_mode, synthesis]
+    tags: [cloud, cheap, synthesis]
+
+  - name: gpt-5
+    provider: openai
+    api_id: gpt-5
+    api_key_env: OPENAI_API_KEY
+    context_window: 400000
+    cost_per_mtok_in: 1.25
+    cost_per_mtok_out: 10.00
+    capabilities: [reasoning, tool_use, vision, json_mode, synthesis, deep_reasoning]
+    tags: [cloud, premium, synthesis]
+
   # ---- Local via Ollama (Phase 2+) ----
   - name: qwen3:8b
     provider: ollama
@@ -43,9 +77,12 @@ models:
     tags: [local, very-fast, classifier]
 
   # ---- xAI (Phase 2.5, optional sentiment) ----
+  # xAI is OpenAI-API-compatible; uses the same provider class with a different base URL + key.
   - name: grok-3-mini
     provider: xai
     api_id: grok-3-mini
+    api_key_env: GROK_API_KEY
+    base_url: https://api.x.ai/v1
     context_window: 131072
     cost_per_mtok_in: 0.30
     cost_per_mtok_out: 0.50

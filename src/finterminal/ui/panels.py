@@ -1,16 +1,291 @@
-"""Rich panel renderers. Day 4 fills these in."""
+"""Rich panel renderers for the FINTERMINAL REPL."""
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+from rich.columns import Columns
 from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 
 def banner() -> Panel:
     return Panel(
-        "[bold cyan]FINTERMINAL[/] v0.1 — Phase 1 bootstrap\n"
+        "[bold cyan]FINTERMINAL[/] v0.1 — Phase 1\n"
         "Type [bold]/help[/] for commands, [bold]/quit[/] to exit.",
         border_style="cyan",
     )
 
 
-# Day 4 will add: ticker_panel, news_panel, fundamentals_panel, watchlist_panel
+def help_panel() -> Panel:
+    body = (
+        "[bold]Commands[/]\n"
+        "  [cyan]/ticker[/] SYMBOL          quote + fundamentals\n"
+        "  [cyan]/news[/] SYMBOL            recent headlines\n"
+        "  [cyan]/watch add[/] SYMBOL       add to watchlist\n"
+        "  [cyan]/watch list[/]             show watchlist\n"
+        "  [cyan]/watch remove[/] SYMBOL    drop from watchlist\n"
+        "  [cyan]/analyze[/] SYMBOL         supervised bull/bear (model per agents.yaml)\n"
+        "  [cyan]/help[/]                   this message\n"
+        "  [cyan]/quit[/]                   exit\n\n"
+        "[dim]Indian symbols auto-suffix to .NS (e.g. RELIANCE → RELIANCE.NS).[/]"
+    )
+    return Panel(body, title="help", border_style="cyan")
+
+
+def error_panel(message: str, *, title: str = "error") -> Panel:
+    return Panel(f"[red]{message}[/]", title=title, border_style="red")
+
+
+def info_panel(message: str, *, title: str = "info") -> Panel:
+    return Panel(message, title=title, border_style="yellow")
+
+
+# ---------- /ticker ----------
+
+
+def _color_change(change_pct: float | None) -> str:
+    if change_pct is None:
+        return "white"
+    abs_pct = abs(change_pct)
+    if abs_pct > 5:
+        return "yellow"
+    return "green" if change_pct > 0 else "red" if change_pct < 0 else "white"
+
+
+def _fmt_money(v: float | int | None, suffix: str = "") -> str:
+    if v is None:
+        return "—"
+    if abs(v) >= 1e7:
+        return f"{v/1e7:,.2f} cr{suffix}"
+    if abs(v) >= 1e5:
+        return f"{v/1e5:,.2f} L{suffix}"
+    return f"{v:,.2f}{suffix}"
+
+
+def _fmt_num(v: float | int | None, decimals: int = 2) -> str:
+    if v is None:
+        return "—"
+    return f"{v:,.{decimals}f}"
+
+
+def _fmt_pct(v: float | None) -> str:
+    if v is None:
+        return "—"
+    return f"{v:+.2f}%"
+
+
+def ticker_panel(quote: dict, fundamentals: dict | None) -> Panel:
+    ticker = quote["ticker"]
+    last_price = quote.get("last_price")
+    change_pct = quote.get("change_pct")
+    color = _color_change(change_pct)
+
+    header = Text()
+    header.append(f"{ticker}  ", style="bold cyan")
+    header.append(f"{_fmt_num(last_price)}", style=f"bold {color}")
+    header.append(f"   {_fmt_pct(change_pct)}", style=color)
+
+    table = Table(show_header=False, show_edge=False, pad_edge=False, box=None)
+    table.add_column("k", style="dim")
+    table.add_column("v")
+    table.add_row("Volume", _fmt_money(quote.get("volume")))
+    table.add_row("Market cap", _fmt_money(quote.get("market_cap")))
+
+    if fundamentals:
+        table.add_row("", "")
+        table.add_row("[bold]Fundamentals[/]", "")
+        table.add_row("P/E (TTM)", _fmt_num(fundamentals.get("pe_ttm")))
+        table.add_row("EPS (TTM)", _fmt_num(fundamentals.get("eps_ttm")))
+        table.add_row("ROE", _fmt_num(fundamentals.get("roe"), 3))
+        table.add_row("ROCE", _fmt_num(fundamentals.get("roce"), 3))
+        table.add_row("D/E", _fmt_num(fundamentals.get("debt_to_equity")))
+        table.add_row("Revenue (TTM)", _fmt_money(fundamentals.get("revenue_ttm")))
+        table.add_row("Net income (TTM)", _fmt_money(fundamentals.get("net_income_ttm")))
+
+    as_of = quote.get("as_of")
+    footer = f"[dim]as of {as_of.isoformat() if hasattr(as_of, 'isoformat') else as_of} · src: {quote.get('provider', '?')}[/]"
+    return Panel(
+        Columns([header, table], padding=(0, 4), expand=False),
+        title=ticker,
+        subtitle=footer,
+        border_style=color,
+    )
+
+
+# ---------- /news ----------
+
+
+def news_table(items: list[dict], ticker: str) -> Table:
+    table = Table(title=f"{ticker} — recent news", border_style="cyan", expand=True)
+    table.add_column("date", style="dim", no_wrap=True)
+    table.add_column("source", style="cyan", no_wrap=True)
+    table.add_column("headline")
+    if not items:
+        table.add_row("—", "—", "[dim]no news returned[/]")
+        return table
+    for n in items:
+        published = n.get("published_at")
+        if hasattr(published, "strftime"):
+            date_str = published.strftime("%Y-%m-%d")
+        elif published:
+            date_str = str(published)[:10]
+        else:
+            date_str = "—"
+        table.add_row(date_str, n.get("source") or "—", n.get("headline") or "—")
+    return table
+
+
+# ---------- /watch ----------
+
+
+def watchlist_table(rows: list[dict]) -> Table:
+    table = Table(title="watchlist", border_style="cyan")
+    table.add_column("ticker", style="bold cyan")
+    table.add_column("added", style="dim")
+    table.add_column("notes")
+    if not rows:
+        table.add_row("—", "—", "[dim]empty — add with /watch add SYMBOL[/]")
+        return table
+    for r in rows:
+        added = r.get("added_at")
+        added_str = added.strftime("%Y-%m-%d") if hasattr(added, "strftime") else str(added or "—")
+        table.add_row(r["ticker"], added_str, r.get("notes") or "")
+    return table
+
+
+# ---------- /analyze ----------
+
+
+def _confidence_gauge(conf: float) -> Text:
+    """Renders confidence as a 20-cell bar with color thresholds."""
+    cells = max(0, min(20, int(round(conf * 20))))
+    if conf >= 0.7:
+        color = "green"
+    elif conf >= 0.4:
+        color = "yellow"
+    else:
+        color = "red"
+    bar = Text()
+    bar.append("█" * cells, style=color)
+    bar.append("░" * (20 - cells), style="dim")
+    bar.append(f"  {conf:.2f}", style=f"bold {color}")
+    return bar
+
+
+def analysis_panel(analysis: dict) -> Panel:
+    """analysis = {ticker, bull_case, bear_case, confidence, assumptions, what_would_change}."""
+    bull = Panel(
+        analysis.get("bull_case") or "[dim]—[/]",
+        title="bull",
+        border_style="green",
+    )
+    bear = Panel(
+        analysis.get("bear_case") or "[dim]—[/]",
+        title="bear",
+        border_style="red",
+    )
+
+    body = Table.grid(expand=True)
+    body.add_column(ratio=1)
+    body.add_column(ratio=1)
+    body.add_row(bull, bear)
+
+    confidence = analysis.get("confidence")
+    if confidence is None:
+        conf_line = Text("confidence: —", style="dim")
+    else:
+        conf_line = Text("confidence  ")
+        conf_line.append(_confidence_gauge(float(confidence)))
+
+    assumptions = analysis.get("assumptions") or "[dim]—[/]"
+    wwcm = analysis.get("what_would_change") or "[dim]—[/]"
+
+    footer = Table.grid(expand=True)
+    footer.add_column(ratio=1)
+    footer.add_column(ratio=1)
+    footer.add_row(
+        Panel(assumptions, title="assumptions", border_style="cyan"),
+        Panel(wwcm, title="what would change my mind", border_style="cyan"),
+    )
+
+    stack = Table.grid(expand=True)
+    stack.add_column()
+    stack.add_row(body)
+    stack.add_row(conf_line)
+    stack.add_row(footer)
+
+    ts = analysis.get("created_at") or datetime.now(timezone.utc)
+    subtitle = f"[dim]{ts.isoformat() if hasattr(ts, 'isoformat') else ts}[/]"
+    return Panel(
+        stack,
+        title=f"/analyze {analysis.get('ticker', '?')}",
+        subtitle=subtitle,
+        border_style="cyan",
+    )
+
+
+# ---------- helpers exposed for tests ----------
+
+
+def format_quote_for_context(quote: dict) -> str:
+    return (
+        "## Quote\n"
+        f"- last_price: {_fmt_num(quote.get('last_price'))} [src: quote.last_price]\n"
+        f"- change_pct: {_fmt_pct(quote.get('change_pct'))} [src: quote.change_pct]\n"
+        f"- volume: {_fmt_money(quote.get('volume'))} [src: quote.volume]\n"
+        f"- market_cap: {_fmt_money(quote.get('market_cap'))} [src: quote.market_cap]\n"
+        f"- as_of: {quote.get('as_of')} [src: quote.as_of]\n"
+    )
+
+
+def format_fundamentals_for_context(f: dict | None) -> str:
+    if not f:
+        return "## Fundamentals\n- data unavailable\n"
+    return (
+        "## Fundamentals\n"
+        f"- pe_ttm: {_fmt_num(f.get('pe_ttm'))} [src: fundamentals.pe_ttm]\n"
+        f"- eps_ttm: {_fmt_num(f.get('eps_ttm'))} [src: fundamentals.eps_ttm]\n"
+        f"- roe: {_fmt_num(f.get('roe'), 3)} [src: fundamentals.roe]\n"
+        f"- roce: {_fmt_num(f.get('roce'), 3)} [src: fundamentals.roce]\n"
+        f"- debt_to_equity: {_fmt_num(f.get('debt_to_equity'))} [src: fundamentals.debt_to_equity]\n"
+        f"- revenue_ttm: {_fmt_money(f.get('revenue_ttm'))} [src: fundamentals.revenue_ttm]\n"
+        f"- net_income_ttm: {_fmt_money(f.get('net_income_ttm'))} [src: fundamentals.net_income_ttm]\n"
+    )
+
+
+def format_news_for_context(items: list[dict]) -> str:
+    if not items:
+        return "## Recent News\n- data unavailable\n"
+    out = ["## Recent News"]
+    for i, n in enumerate(items[:10]):
+        published = n.get("published_at")
+        date_str = (
+            published.strftime("%Y-%m-%d")
+            if hasattr(published, "strftime")
+            else (str(published)[:10] if published else "—")
+        )
+        out.append(
+            f"- [{date_str}] {n.get('source') or '?'}: "
+            f"{n.get('headline') or '—'} [src: news[{i}]]"
+        )
+    return "\n".join(out) + "\n"
+
+
+def build_context_block(
+    ticker: str,
+    quote: dict,
+    fundamentals: dict | None,
+    news: list[dict],
+) -> str:
+    return (
+        f"# {ticker}\n\n"
+        + format_quote_for_context(quote)
+        + "\n"
+        + format_fundamentals_for_context(fundamentals)
+        + "\n"
+        + format_news_for_context(news)
+    )
+
+

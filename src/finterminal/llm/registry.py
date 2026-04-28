@@ -35,6 +35,9 @@ class ModelRegistry:
                 cost_per_mtok_out=float(entry["cost_per_mtok_out"]),
                 capabilities=frozenset(entry.get("capabilities", [])),
                 tags=frozenset(entry.get("tags", [])),
+                api_key_env=entry.get("api_key_env"),
+                base_url=entry.get("base_url"),
+                base_url_env=entry.get("base_url_env"),
             )
             self._meta[meta.name] = meta
 
