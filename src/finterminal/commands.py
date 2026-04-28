@@ -145,22 +145,48 @@ def _cmd_watch(args: list[str], console: Console) -> None:
 # ---------- /analyze ----------
 
 
+def _parse_analyze_args(args: list[str]) -> tuple[str, bool]:
+    """Returns (ticker, fresh). Raises _UsageError on invalid input."""
+    fresh = False
+    positionals: list[str] = []
+    for a in args:
+        if a == "--fresh":
+            fresh = True
+        elif a.startswith("--"):
+            raise _UsageError(f"unknown flag: {a}")
+        else:
+            positionals.append(a)
+    if len(positionals) != 1:
+        raise _UsageError("/analyze SYMBOL [--fresh]  (e.g. /analyze RELIANCE)")
+    return positionals[0], fresh
+
+
 def _cmd_analyze(args: list[str], console: Console) -> None:
-    raw = _require_one(args, "/analyze SYMBOL  (e.g. /analyze RELIANCE)")
+    raw, fresh = _parse_analyze_args(args)
     ticker = normalize_ticker(raw)
 
-    from .agents.supervisor import analyze_ticker
+    from .agents.analyze_flow import AnalysisError, run_analyze
 
     conn = duckdb_store.get_conn()
     try:
         with console.status(
-            f"analyzing {ticker} (Claude supervisor)…", spinner="dots"
+            f"analyzing {ticker} (Analyst + Critic)…", spinner="dots"
         ):
-            result = asyncio.run(analyze_ticker(ticker, conn))
+            try:
+                result = asyncio.run(run_analyze(ticker, conn, fresh=fresh))
+            except AnalysisError as exc:
+                console.print(panels.error_panel(str(exc), title="/analyze failed"))
+                return
     finally:
         conn.close()
 
-    console.print(panels.analysis_panel(result))
+    panel_kwargs: dict = {}
+    if result.degraded:
+        panel_kwargs["critic_error"] = result.critic_error or "unknown"
+    elif result.critic_payload is not None:
+        panel_kwargs["critic"] = result.critic_payload
+
+    console.print(panels.analysis_panel(result.analyst_payload, **panel_kwargs))
 
 
 _COMMANDS = {

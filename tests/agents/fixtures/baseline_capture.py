@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from finterminal.agents.supervisor import parse_analysis
+from finterminal.agents.analyst import parse_analysis
 
 # A representative LLM-style response. Mirrors analyst.md v2's seven-section format.
 SAMPLE_RESPONSE = """## Variant Perception

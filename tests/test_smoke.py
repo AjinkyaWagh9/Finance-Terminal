@@ -20,28 +20,26 @@ def test_llm_abstraction_loads():
     assert router is not None
 
 
-def test_supervisor_resolves_to_a_provider():
-    """Supervisor's primary must resolve to *some* registered model.
+def test_analyst_resolves_to_a_provider():
+    """The Analyst's primary must resolve to *some* registered model.
 
-    Whether the actual provider instantiates depends on which API key is set
-    (e.g., gpt-5-mini needs OPENAI_API_KEY; claude-sonnet-4-6 needs ANTHROPIC_API_KEY).
+    Whether the actual provider instantiates depends on which API key is set.
     """
     from finterminal.llm import ProviderError, build_router
 
     router = build_router()
     registry = router._registry  # type: ignore[attr-defined]
 
-    cfg = router._agents.get("supervisor")  # type: ignore[attr-defined]
+    cfg = router._agents.get("analyst")  # type: ignore[attr-defined]
     primary_name = cfg["primary"]
     assert any(m.name == primary_name for m in registry.all()), (
-        f"supervisor.primary={primary_name} is not in models.yaml"
+        f"analyst.primary={primary_name} is not in models.yaml"
     )
 
     try:
-        provider = router.for_agent("supervisor")
+        provider = router.for_agent("analyst")
         assert provider.metadata.name == primary_name
     except ProviderError as exc:
-        # Acceptable: the API key for the configured model isn't set in this env.
         assert "API_KEY" in str(exc)
 
 
@@ -126,7 +124,7 @@ def test_nse_normalize():
 
 
 def test_analysis_parser_extracts_all_sections():
-    from finterminal.agents.supervisor import parse_analysis
+    from finterminal.agents.analyst import parse_analysis
 
     sample = """## Bull Case
 - Margin expansion likely [src: fundamentals.roe]
@@ -156,7 +154,7 @@ def test_analysis_parser_extracts_all_sections():
 
 
 def test_analysis_parser_handles_missing_sections():
-    from finterminal.agents.supervisor import parse_analysis
+    from finterminal.agents.analyst import parse_analysis
 
     result = parse_analysis("## Bull Case\n- one bullet only\n")
     assert "one bullet only" in result["bull_case"]
@@ -165,7 +163,7 @@ def test_analysis_parser_handles_missing_sections():
 
 
 def test_analysis_parser_clamps_confidence():
-    from finterminal.agents.supervisor import parse_analysis
+    from finterminal.agents.analyst import parse_analysis
 
     high = parse_analysis("## Confidence\n1.5\n")
     low = parse_analysis("## Confidence\n-0.2\n")
