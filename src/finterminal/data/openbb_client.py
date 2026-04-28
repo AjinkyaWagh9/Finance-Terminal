@@ -106,11 +106,38 @@ def fetch_quote(ticker: str) -> dict:
     raise RuntimeError(f"All providers failed for {ticker}: {last_err!r}")
 
 
+def _is_indian_ticker(ticker: str) -> bool:
+    return ticker.upper().endswith((".NS", ".BO"))
+
+
 def fetch_fundamentals(ticker: str) -> dict:
-    """Returns key ratios. Field availability varies by provider."""
+    """Returns key ratios. Field availability varies by provider.
+
+    Indian tickers (.NS / .BO) try screener.in first — clean PE/ROCE/ROE/D-E
+    coverage that yfinance lacks. yfinance is the universal fallback.
+    """
+    last_err: Exception | None = None
+
+    # India-specific path: try screener.in scraper first
+    if _is_indian_ticker(ticker):
+        try:
+            from .india.screener_in import fetch_fundamentals as fetch_screener
+
+            symbol_bare = ticker.upper().rsplit(".", 1)[0]
+            data = fetch_screener(symbol_bare)
+            # If at least PE or ROE came back, treat as success; supervisor
+            # always benefits from partial data.
+            if data.get("pe_ttm") is not None or data.get("roe") is not None:
+                # Restore the .NS/.BO suffix on the ticker field for downstream consistency
+                data["ticker"] = ticker
+                return data
+            last_err = ValueError("screener.in returned no usable fields")
+        except Exception as exc:  # noqa: BLE001 — fall through to yfinance
+            last_err = exc
+            logger.warning("screener.in fundamentals failed for %s: %s", ticker, exc)
+
     from openbb import obb
 
-    last_err: Exception | None = None
     for provider in _FUNDAMENTAL_PROVIDERS:
         try:
             resp = obb.equity.fundamental.metrics(ticker, provider=provider)
@@ -139,7 +166,34 @@ def fetch_fundamentals(ticker: str) -> dict:
 
 
 def fetch_news(ticker: str, limit: int = 20) -> list[dict]:
-    """Returns recent news items normalized to our schema."""
+    """Returns recent news items normalized to our schema.
+
+    Indian tickers (.NS / .BO) try the india_news_rss aggregator first
+    (Moneycontrol + Livemint + ET feeds, alias-matched). Falls back to
+    OpenBB providers (Benzinga → yfinance) if RSS yields nothing.
+    """
+    if _is_indian_ticker(ticker):
+        try:
+            from .india.news_rss import fetch_news as fetch_india_rss
+
+            items = fetch_india_rss(ticker, limit=limit)
+            if items:
+                return items
+            logger.info("india RSS yielded no matches for %s; trying Finnhub/OpenBB", ticker)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("india RSS failed for %s: %s", ticker, exc)
+
+    # Finnhub (free, optional) — if FINNHUB_API_KEY is set; covers India + US
+    try:
+        from . import finnhub_client
+
+        if finnhub_client.is_available():
+            items = finnhub_client.fetch_news(ticker, limit=limit)
+            if items:
+                return items
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("finnhub news failed for %s: %s", ticker, exc)
+
     from openbb import obb
 
     # Most providers don't tag news items with their own brand name in a

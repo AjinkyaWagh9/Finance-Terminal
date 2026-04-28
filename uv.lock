@@ -664,9 +664,11 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
+    { name = "beautifulsoup4" },
     { name = "chromadb" },
     { name = "duckdb" },
     { name = "httpx" },
+    { name = "lxml" },
     { name = "openai" },
     { name = "openbb" },
     { name = "pydantic" },
@@ -689,9 +691,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.97.0" },
+    { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "chromadb", specifier = ">=1.5.8" },
     { name = "duckdb", specifier = ">=1.5.2" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "lxml", specifier = ">=6.1.0" },
     { name = "openai", specifier = ">=1.60.0" },
     { name = "openbb", specifier = ">=4.7.1" },
     { name = "pydantic", specifier = ">=2.13.3" },
