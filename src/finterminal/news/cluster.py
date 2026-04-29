@@ -20,7 +20,7 @@ from .collector import Story
 logger = logging.getLogger(__name__)
 
 # Tune these based on manual inspection of the first 3 runs.
-CLUSTER_DISTANCE_THRESHOLD: float = 0.25
+CLUSTER_DISTANCE_THRESHOLD: float = 0.40
 MINHASH_JACCARD_THRESHOLD: float = 0.85
 LINEAGE_CENTROID_THRESHOLD: float = 0.70
 
