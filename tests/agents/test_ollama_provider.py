@@ -216,39 +216,62 @@ def test_non_json_response_raises():
 
 # ---------------- live smoke (gated) ----------------
 
-def _ollama_qwen_available() -> bool:
-    """True iff the local Ollama daemon is up AND qwen3:8b is pulled."""
+def _pulled_qwen_model() -> str | None:
+    """Return the name of any pulled qwen-class model, or None.
+
+    Used to gate the live smoke test on whichever qwen variant the
+    developer has pulled (qwen3:8b, qwen3.5:9b, qwen2.5:7b, etc.).
+    """
     try:
         r = httpx.get("http://localhost:11434/api/tags", timeout=2.0)
         if r.status_code != 200:
-            return False
+            return None
         names = [m.get("name", "") for m in r.json().get("models", [])]
-        return any("qwen3:8b" in n for n in names)
+        for n in names:
+            if "qwen" in n.lower():
+                return n
     except Exception:  # noqa: BLE001
-        return False
+        return None
+    return None
+
+
+_PULLED_QWEN = _pulled_qwen_model()
 
 
 @pytest.mark.skipif(
-    not _ollama_qwen_available(),
-    reason="Ollama daemon + qwen3:8b not present; run `ollama pull qwen3:8b` to enable.",
+    _PULLED_QWEN is None,
+    reason="No qwen-class model pulled; run `ollama pull qwen3.5:9b` to enable.",
 )
 def test_live_smoke_qwen_completes():
-    """End-to-end: real Ollama daemon, real qwen3:8b model.
+    """End-to-end: real Ollama daemon, real qwen-class model.
 
-    Skipped unless qwen3:8b is pulled. Times out generously (Qwen3 8B
-    cold-start on M4 is ~20-40s; warm calls ~1-3s).
+    Skipped unless any qwen* model is pulled. Times out generously
+    (cold-start on M4 ~20-40s; warm calls ~1-3s).
     """
-    prov = OllamaProvider(_QWEN_META)
+    meta = ModelMetadata(
+        name=_PULLED_QWEN,
+        provider="ollama",
+        api_id=_PULLED_QWEN,
+        context_window=32768,
+        cost_per_mtok_in=0.0,
+        cost_per_mtok_out=0.0,
+        capabilities=["reasoning"],
+        tags=["local"],
+    )
+    prov = OllamaProvider(meta)
+    # qwen3.x are reasoning-tier — they spend tokens on internal thought
+    # before visible output. max_tokens=256 is the floor; smaller values
+    # return empty text because the budget is consumed by reasoning.
     result = asyncio.run(
         prov.complete(
-            system="Reply with EXACTLY one word.",
-            messages=[Message(role="user", content="Say: ok")],
+            system="Reply briefly.",
+            messages=[Message(role="user", content="Say the word: ok")],
             temperature=0.1,
-            max_tokens=10,
+            max_tokens=256,
         )
     )
-    assert result.text  # any non-empty content
+    assert result.text, f"empty completion (tokens_in={result.tokens_in}, tokens_out={result.tokens_out})"
     assert result.tokens_in > 0
     assert result.tokens_out > 0
     assert result.provider == "ollama"
-    assert result.model == "qwen3:8b"
+    assert result.model == _PULLED_QWEN

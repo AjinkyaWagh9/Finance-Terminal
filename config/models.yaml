@@ -76,6 +76,31 @@ models:
     capabilities: [classification, json_mode]
     tags: [local, very-fast, classifier]
 
+  # ---- Pulled locally on 2026-04-29 (verified via `ollama list`) ----
+  - name: qwen3.5:9b
+    provider: ollama
+    api_id: qwen3.5:9b
+    context_window: 32768
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    capabilities: [reasoning, tool_use, multilingual, json_mode, synthesis]
+    tags: [local, mid-tier, workhorse]
+    # Workhorse for Phase 2/2.5 mid-tier extraction (Data, News, Transcripts,
+    # CEO Tracker, Comps). 6.6 GB on disk. Indian-news multilingual capability
+    # is the key fit for our use case.
+
+  - name: gemma4:e4b
+    provider: ollama
+    api_id: gemma4:e4b
+    context_window: 8192
+    cost_per_mtok_in: 0.0
+    cost_per_mtok_out: 0.0
+    capabilities: [reasoning, json_mode]
+    tags: [local, mid-tier, alt]
+    # 9.6 GB on disk — bigger than expected. Despite the "e4b" tag, this is
+    # NOT a fast classifier; it's a second mid-tier option. Use as alt to
+    # qwen3.5:9b for A/B comparison or as fallback when qwen is degraded.
+
   # ---- xAI (Phase 2.5, optional sentiment) ----
   # xAI is OpenAI-API-compatible; uses the same provider class with a different base URL + key.
   - name: grok-3-mini
