@@ -5,7 +5,6 @@ import asyncio
 import json
 from pathlib import Path
 
-import pytest
 
 from finterminal.agents.analyst import AnalystAgent, parse_analysis
 from finterminal.agents.base import AgentContext

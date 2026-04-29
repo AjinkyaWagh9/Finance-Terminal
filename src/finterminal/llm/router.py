@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from .base import LLMProvider, ProviderError
+from .base import LLMProvider
 from .registry import ModelNotFound, ModelRegistry
 
 
