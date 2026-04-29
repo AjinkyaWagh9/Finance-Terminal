@@ -24,3 +24,28 @@ def test_signals_unique_constraint(tmp_path):
             INSERT INTO signals (signal_id, signal_type, engine, ticker, ts_emitted)
             VALUES ('b', 'cluster_momentum', 'reflexivity', 'TCS', '2026-04-29 10:00:00')
         """)
+
+
+from finterminal.outcomes.schema import (
+    Engine, SignalType, SIGNAL_REGISTRY,
+    HORIZONS_DAYS, MACRO_TICKER, NIFTY_TICKER,
+)
+
+def test_engines_are_lowercase_strings():
+    assert {e.value for e in Engine} == {
+        "mispricing", "quality", "regime", "reflexivity", "risk"
+    }
+
+def test_signal_registry_covers_every_signal_type():
+    assert set(SIGNAL_REGISTRY.keys()) == set(SignalType)
+
+def test_signal_registry_engines_are_valid():
+    for e in SIGNAL_REGISTRY.values():
+        assert isinstance(e, Engine)
+
+def test_horizons_are_canonical():
+    assert HORIZONS_DAYS == (1, 7, 30, 90, 365)
+
+def test_sentinel_tickers():
+    assert MACRO_TICKER == "_MACRO"
+    assert NIFTY_TICKER == "_NIFTY50"
