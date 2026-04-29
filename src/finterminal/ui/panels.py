@@ -383,7 +383,7 @@ def render_trends_table(clusters: list[dict], sector_filter: str | None = None) 
     """Render /trends output. clusters is from news_store.latest_clusters().
 
     Each cluster dict has: id, as_of, story_count, source_count, top_tickers,
-    dominant_sector, representative_id, first_seen, story_count_delta, day_n.
+    dominant_sector, headline, first_seen, story_count_delta, day_n.
     """
     if not clusters:
         return Panel(
@@ -421,8 +421,8 @@ def render_trends_table(clusters: list[dict], sector_filter: str | None = None) 
         story_count = str(c.get("story_count", ""))
         source_count = str(c.get("source_count", ""))
         tickers = ", ".join((c.get("top_tickers") or [])[:3])
-        rep_id = c.get("representative_id") or ""
-        headline = _escape_markup(rep_id[:60] if rep_id else "")
+        rep_headline = c.get("headline") or ""
+        headline = _escape_markup(rep_headline[:80] if rep_headline else "")
         first_seen = ""
         fs = c.get("first_seen")
         if fs:

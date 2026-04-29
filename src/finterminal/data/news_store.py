@@ -81,18 +81,21 @@ def latest_clusters(conn: duckdb.DuckDBPyConnection) -> list[dict]:
         )
         SELECT
             c.id, c.as_of, c.story_count, c.source_count,
-            c.top_tickers, c.dominant_sector, c.representative_id, c.first_seen,
+            c.top_tickers, c.dominant_sector,
+            COALESCE(s.headline, c.representative_id) AS headline,
+            c.first_seen,
             COALESCE(l.total_delta, 0) AS story_count_delta,
             COALESCE(l.parent_count, 0) AS day_n
         FROM news_clusters c
         CROSS JOIN latest_date ld
+        LEFT JOIN news_stories s ON s.id = c.representative_id
         LEFT JOIN lineage_agg l ON l.child_id = c.id
         WHERE c.as_of = ld.as_of
         ORDER BY c.story_count DESC
         """,
     ).fetchall()
     cols = ["id", "as_of", "story_count", "source_count", "top_tickers",
-            "dominant_sector", "representative_id", "first_seen", "story_count_delta", "day_n"]
+            "dominant_sector", "headline", "first_seen", "story_count_delta", "day_n"]
     return [dict(zip(cols, row)) for row in rows]
 
 

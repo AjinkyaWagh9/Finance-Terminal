@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import duckdb
 
@@ -43,29 +43,43 @@ def run(conn: duckdb.DuckDBPyConnection) -> PipelineResult:
             n_lineage_links=0, runtime_s=time.monotonic() - t0,
         )
 
-    # 2. Dedupe
-    stories = drop_url_dupes(raw_stories)
+    # 2. Recency filter — drop stories older than 7 days (some feeds include ancient articles)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    def _is_fresh(s) -> bool:
+        if s.published_at is None:
+            return True
+        dt = s.published_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt >= cutoff
+    fresh = [s for s in raw_stories if _is_fresh(s)]
+    stale_count = len(raw_stories) - len(fresh)
+    if stale_count:
+        logger.info("dropped %d stale stories (older than 7 days)", stale_count)
+
+    # 3. Dedupe
+    stories = drop_url_dupes(fresh)
     stories = minhash_filter(stories)
     logger.info("%d stories after dedupe", len(stories))
 
-    # 3. Tag
+    # 4. Tag
     stories = tag(stories)
 
-    # 4. Embed
+    # 5. Embed
     headlines = [s.headline for s in stories]
     embeddings = embed(headlines)
     for s, emb in zip(stories, embeddings):
         s.embedding = emb.tolist()
 
-    # 5. Cluster
+    # 6. Cluster
     clusters = cluster_stories(stories)
     logger.info("%d clusters formed", len(clusters))
 
-    # 6. Persist stories + clusters
+    # 7. Persist stories + clusters
     news_store.upsert_stories(conn, stories)
     news_store.upsert_clusters(conn, clusters, today)
 
-    # 7. Lineage — match today's clusters to yesterday's
+    # 8. Lineage — match today's clusters to yesterday's
     yesterday = today - timedelta(days=1)
     yesterday_clusters = news_store.clusters_for_as_of(conn, yesterday)
     links = match_clusters(yesterday_clusters, clusters, today)
