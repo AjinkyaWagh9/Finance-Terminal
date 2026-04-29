@@ -26,37 +26,38 @@ _NEWS = [
 
 def test_dossier_includes_quote_tag():
     out = build_source_dossier("RELIANCE.NS", _QUOTE, _FUND, _NEWS)
-    assert "[QUOTE]" in out
+    assert "[src: quote.last_price]" in out
     assert "RELIANCE.NS" in out
     assert "2945" in out  # price digits present
 
 
 def test_dossier_includes_fundamental_tags():
     out = build_source_dossier("RELIANCE.NS", _QUOTE, _FUND, _NEWS)
-    assert "[FUND-PE]" in out and "23.4" in out
-    assert "[FUND-ROE]" in out
-    assert "[FUND-DEBT]" in out  # debt_to_equity rendered as [FUND-DEBT]
+    assert "[src: fundamentals.pe_ttm]" in out and "23.4" in out
+    assert "[src: fundamentals.roe]" in out
+    assert "[src: fundamentals.debt_to_equity]" in out
 
 
 def test_dossier_news_uses_indexed_tags():
     out = build_source_dossier("RELIANCE.NS", _QUOTE, _FUND, _NEWS)
-    assert "[NEWS-1]" in out
-    assert "[NEWS-2]" in out
+    # Zero-indexed to match build_context_block at panels.py:337
+    assert "[src: news[0]]" in out
+    assert "[src: news[1]]" in out
     assert "Moneycontrol" in out
     assert "Livemint" in out
 
 
 def test_dossier_handles_missing_fundamentals():
     out = build_source_dossier("RELIANCE.NS", _QUOTE, None, _NEWS)
-    assert "[QUOTE]" in out
+    assert "[src: quote.last_price]" in out
     # Fundamentals section absent or marked unavailable; must not crash:
-    assert "[FUND-PE]" not in out
+    assert "[src: fundamentals.pe_ttm]" not in out
     assert "fundamentals unavailable" in out.lower()
 
 
 def test_dossier_handles_no_news():
     out = build_source_dossier("RELIANCE.NS", _QUOTE, _FUND, [])
-    assert "[NEWS-1]" not in out
+    assert "[src: news[0]]" not in out
     assert "no news" in out.lower()
 
 

@@ -88,9 +88,9 @@ def test_data_agent_happy_path(conn):
     assert p["quote"]["last_price"] == 2945.50
     assert p["fundamentals"]["pe_ttm"] == 23.4
     assert len(p["news"]) == 2
-    assert "[QUOTE]" in p["source_dossier"]
+    assert "[src: quote.last_price]" in p["source_dossier"]
     assert "## Quote" in p["context_block"]
-    assert "[FUND-PE]" in p["source_dossier"]
+    assert "[src: fundamentals.pe_ttm]" in p["source_dossier"]
 
 
 def test_data_agent_persists_to_duckdb(conn):
