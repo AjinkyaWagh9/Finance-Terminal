@@ -206,3 +206,30 @@ def test_run_analyze_non_regression_analyst_fields_match_baseline(conn):
 
 def test_result_cache_ttl_constant_is_300():
     assert RESULT_CACHE_TTL_S == 300
+
+
+def test_run_analyze_default_registry_path_resolves_build_router(conn, monkeypatch):
+    """Regression: the registry=None branch late-imports build_router. The
+    symbol must live at finterminal.llm.build_router (the package), not on
+    finterminal.llm.router (the submodule). Caught a real REPL crash.
+    """
+    import finterminal.agents.analyze_flow as flow_mod
+    import finterminal.llm as llm_pkg
+
+    sentinel_router = object()
+    monkeypatch.setattr(llm_pkg, "build_router", lambda: sentinel_router)
+
+    captured = {}
+
+    def _fake_default_registry(router):
+        captured["router"] = router
+        return _registry(
+            analyst_provider=_MockProvider(_RAW_ANALYST),
+            critic_primary=_MockProvider(_RAW_CRITIC),
+        )
+
+    monkeypatch.setattr(flow_mod, "_build_default_registry", _fake_default_registry)
+
+    result = asyncio.run(run_analyze("RELIANCE.NS", conn, fresh=True))
+    assert captured["router"] is sentinel_router
+    assert result.analyst_payload["confidence"] == 0.55

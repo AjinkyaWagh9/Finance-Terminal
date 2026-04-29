@@ -135,7 +135,7 @@ async def run_analyze(
             return _rehydrate_cached(cached)
 
     if registry is None:
-        from ..llm.router import build_router as _build_router  # late import; avoids cycle
+        from ..llm import build_router as _build_router  # late import; avoids cycle
         router = _build_router()
         registry = _build_default_registry(router)
 
