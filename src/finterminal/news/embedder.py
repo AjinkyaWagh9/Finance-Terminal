@@ -33,4 +33,4 @@ def embed(texts: list[str]) -> np.ndarray:
     if not texts:
         return np.zeros((0, 384), dtype=np.float32)
     model = _get_model()
-    return model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+    return model.encode(texts, convert_to_numpy=True, show_progress_bar=False).astype(np.float32)
