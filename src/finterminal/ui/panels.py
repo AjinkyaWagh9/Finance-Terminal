@@ -10,6 +10,21 @@ from rich.table import Table
 from rich.text import Text
 
 
+def _escape_markup(s: str | None) -> str:
+    """Escape Rich markup brackets in LLM-generated content.
+
+    The Analyst emits [src: quote.last_price]-style citations and the
+    Critic emits [HIGH]/[MEDIUM]/[LOW] severity prefixes. Rich's Panel
+    and Text constructors interpret bracketed text as style markup and
+    silently strip unknown styles. Escaping `[` to `\\[` makes Rich
+    render the brackets literally while preserving our own intentional
+    markup (which we pass via Text.from_markup or styled Text.append).
+    """
+    if s is None:
+        return ""
+    return s.replace("[", r"\[")
+
+
 def banner() -> Panel:
     return Panel(
         "[bold cyan]FINTERMINAL[/] v0.1 — Phase 1\n"
@@ -203,18 +218,20 @@ def analysis_panel(
     """
     variant = (analysis.get("variant_perception") or "").strip()
     variant_panel = (
-        Panel(variant, title="variant perception", border_style="magenta")
+        Panel(_escape_markup(variant), title="variant perception", border_style="magenta")
         if variant and "no consensus" not in variant.lower()
         else None
     )
 
+    bull_text = analysis.get("bull_case")
+    bear_text = analysis.get("bear_case")
     bull = Panel(
-        analysis.get("bull_case") or "[dim]—[/]",
+        _escape_markup(bull_text) if bull_text else "[dim]—[/]",
         title="bull",
         border_style="green",
     )
     bear = Panel(
-        analysis.get("bear_case") or "[dim]—[/]",
+        _escape_markup(bear_text) if bear_text else "[dim]—[/]",
         title="bear",
         border_style="red",
     )
@@ -243,8 +260,10 @@ def analysis_panel(
             summary.append(f"  →  {critic['confidence_adj']:.2f} (critic)",
                            style="bold yellow")
 
-    assumptions = analysis.get("assumptions") or "[dim]—[/]"
-    wwcm = analysis.get("what_would_change") or "[dim]—[/]"
+    raw_assumptions = analysis.get("assumptions")
+    raw_wwcm = analysis.get("what_would_change")
+    assumptions = _escape_markup(raw_assumptions) if raw_assumptions else "[dim]—[/]"
+    wwcm = _escape_markup(raw_wwcm) if raw_wwcm else "[dim]—[/]"
 
     footer = Table.grid(expand=True)
     footer.add_column(ratio=1)
