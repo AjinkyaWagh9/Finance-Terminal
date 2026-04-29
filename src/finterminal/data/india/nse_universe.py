@@ -22,8 +22,7 @@ _FIXTURES_DIR = Path(__file__).parent / "fixtures"
 _SECTOR_MAP_PATH = Path(__file__).parent / "sector_map.yaml"
 
 _STRIP_SUFFIXES = re.compile(
-    r"\b(limited|ltd\.?|industries|corporation|corp\.?|company|co\.?|bank|"
-    r"technologies|tech|enterprises|services|india)\b",
+    r"\b(limited|ltd\.?|corporation|corp\.?)\b",
     re.IGNORECASE,
 )
 

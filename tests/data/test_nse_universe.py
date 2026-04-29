@@ -27,7 +27,7 @@ def test_ltd_stripped_from_alias():
     universe = load_equity_list()
     rel = universe["RELIANCE"]
     aliases_lower = [a.lower() for a in rel["aliases"]]
-    assert any("reliance industries" in a for a in aliases_lower)
+    assert "reliance industries" in aliases_lower
 
 
 def test_load_sector_map_returns_dict():
