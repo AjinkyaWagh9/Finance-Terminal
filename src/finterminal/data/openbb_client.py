@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 #   enrichment to a Phase 3 multi-endpoint US strategy.
 # - News: Benzinga gives high-quality US-equity headlines; .NS / .BO will
 #   fail and degrade to yfinance automatically.
-_QUOTE_PROVIDERS = ["yfinance"]
+_QUOTE_PROVIDERS = ["yfinance", "nse"]
 _FUNDAMENTAL_PROVIDERS = ["yfinance"]
 _NEWS_PROVIDERS = ["benzinga", "yfinance"]
 
@@ -47,62 +47,101 @@ def _first_present(d: dict, *keys: str, default=None):
     return default
 
 
-def fetch_quote(ticker: str) -> dict:
-    """Returns latest quote: ticker, as_of, last_price, change_pct, volume, market_cap, raw."""
+def _fetch_via_yfinance(ticker: str) -> dict:
+    """Fetch quote via OpenBB's yfinance provider.
+
+    Tries the live quote endpoint first; on empty/failure, falls back to
+    the historical bars endpoint (more stable under Yahoo's cookie/crumb
+    auth flakiness) and synthesizes a quote from the last two closes.
+
+    Raises RuntimeError on all-paths-failed.
+    """
     from openbb import obb  # imported lazily — OpenBB has slow cold start
 
+    provider = "yfinance"
+    last_err: Exception | None = None
+
+    try:
+        resp = obb.equity.price.quote(ticker, provider=provider)
+        results = resp.results or []
+        if results:
+            d = _to_dict(results[0])
+            return {
+                "ticker": ticker,
+                "as_of": datetime.now(timezone.utc),
+                "last_price": _first_present(d, "last_price", "price", "close", "regular_market_price"),
+                "change_pct": _first_present(d, "change_percent", "regular_market_change_percent"),
+                "volume": _first_present(d, "volume", "regular_market_volume"),
+                "market_cap": _first_present(d, "market_cap"),
+                "provider": provider,
+                "raw": d,
+            }
+        last_err = ValueError(f"empty quote from {provider}")
+    except Exception as exc:  # noqa: BLE001
+        last_err = exc
+        logger.warning("quote fetch via %s failed for %s: %s", provider, ticker, exc)
+
+    # Historical bars fallback for Yahoo flakiness.
+    try:
+        start = (datetime.now(timezone.utc).date() - timedelta(days=_HISTORICAL_LOOKBACK_DAYS)).isoformat()
+        hist = obb.equity.price.historical(ticker, provider=provider, start_date=start)
+        rows = hist.results or []
+        if rows:
+            last = _to_dict(rows[-1])
+            prev = _to_dict(rows[-2]) if len(rows) >= 2 else None
+            last_close = last.get("close")
+            prev_close = prev.get("close") if prev else None
+            change_pct = (
+                (last_close - prev_close) / prev_close * 100
+                if last_close is not None and prev_close
+                else None
+            )
+            return {
+                "ticker": ticker,
+                "as_of": datetime.now(timezone.utc),
+                "last_price": last_close,
+                "change_pct": change_pct,
+                "volume": last.get("volume"),
+                "market_cap": None,
+                "provider": f"{provider}/historical",
+                "raw": last,
+            }
+        last_err = ValueError(f"empty historical from {provider}")
+    except Exception as exc:  # noqa: BLE001
+        last_err = exc
+        logger.warning("historical fallback via %s failed for %s: %s", provider, ticker, exc)
+
+    raise RuntimeError(f"yfinance failed for {ticker}: {last_err!r}")
+
+
+def fetch_quote(ticker: str) -> dict:
+    """Returns latest quote: ticker, as_of, last_price, change_pct, volume, market_cap, raw.
+
+    Provider chain (Q-5):
+      1. yfinance — universal coverage (India + US + EU); flaky under throttle
+      2. nse — direct NSE API; .NS / .BO only; no auth, used as fallback
+    """
     last_err: Exception | None = None
     for provider in _QUOTE_PROVIDERS:
-        try:
-            resp = obb.equity.price.quote(ticker, provider=provider)
-            results = resp.results or []
-            if results:
-                d = _to_dict(results[0])
-                return {
-                    "ticker": ticker,
-                    "as_of": datetime.now(timezone.utc),
-                    "last_price": _first_present(d, "last_price", "price", "close", "regular_market_price"),
-                    "change_pct": _first_present(d, "change_percent", "regular_market_change_percent"),
-                    "volume": _first_present(d, "volume", "regular_market_volume"),
-                    "market_cap": _first_present(d, "market_cap"),
-                    "provider": provider,
-                    "raw": d,
-                }
-            last_err = ValueError(f"empty quote from {provider}")
-        except Exception as exc:  # noqa: BLE001 — log and try next provider/fallback
-            last_err = exc
-            logger.warning("quote fetch via %s failed for %s: %s", provider, ticker, exc)
-            continue
+        if provider == "yfinance":
+            try:
+                return _fetch_via_yfinance(ticker)
+            except Exception as exc:  # noqa: BLE001
+                last_err = exc
+                continue
 
-        # Yahoo's quote endpoint is intermittently flaky for Indian tickers (cookie/crumb auth).
-        # Historical bars endpoint is more reliable — synthesize a quote from the last two closes.
-        try:
-            start = (datetime.now(timezone.utc).date() - timedelta(days=_HISTORICAL_LOOKBACK_DAYS)).isoformat()
-            hist = obb.equity.price.historical(ticker, provider=provider, start_date=start)
-            rows = hist.results or []
-            if rows:
-                last = _to_dict(rows[-1])
-                prev = _to_dict(rows[-2]) if len(rows) >= 2 else None
-                last_close = last.get("close")
-                prev_close = prev.get("close") if prev else None
-                change_pct = (
-                    (last_close - prev_close) / prev_close * 100
-                    if last_close is not None and prev_close
-                    else None
-                )
-                return {
-                    "ticker": ticker,
-                    "as_of": datetime.now(timezone.utc),
-                    "last_price": last_close,
-                    "change_pct": change_pct,
-                    "volume": last.get("volume"),
-                    "market_cap": None,
-                    "provider": f"{provider}/historical",
-                    "raw": last,
-                }
-        except Exception as exc:  # noqa: BLE001
-            last_err = exc
-            logger.warning("historical fallback via %s failed for %s: %s", provider, ticker, exc)
+        if provider == "nse":
+            if not _is_indian_ticker(ticker):
+                continue
+            try:
+                from .india.nse_quote import fetch_nse_quote
+                logger.info("falling through to NSE direct API for %s", ticker)
+                return fetch_nse_quote(ticker)
+            except Exception as exc:  # noqa: BLE001
+                last_err = exc
+                logger.warning("NSE direct fetch failed for %s: %s", ticker, exc)
+                continue
+
     raise RuntimeError(f"All providers failed for {ticker}: {last_err!r}")
 
 
