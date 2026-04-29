@@ -42,6 +42,8 @@ def help_panel() -> Panel:
         "  [cyan]/watch list[/]             show watchlist\n"
         "  [cyan]/watch remove[/] SYMBOL    drop from watchlist\n"
         "  [cyan]/analyze[/] SYMBOL         supervised bull/bear (model per agents.yaml)\n"
+        "  [cyan]/refresh-news[/]             pull + cluster today's market news\n"
+        "  [cyan]/trends[/] [SECTOR]          show story clusters (optional sector filter)\n"
         "  [cyan]/help[/]                   this message\n"
         "  [cyan]/quit[/]                   exit\n\n"
         "[bold]Symbol forms[/]\n"

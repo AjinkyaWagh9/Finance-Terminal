@@ -11,7 +11,8 @@ import logging
 
 from rich.console import Console
 
-from .data import duckdb_store, openbb_client
+from .data import duckdb_store, news_store, openbb_client
+from .news.pipeline import run as _pipeline_run
 from .data.nse import normalize_ticker
 from .ui import panels
 
@@ -189,10 +190,42 @@ def _cmd_analyze(args: list[str], console: Console) -> None:
     console.print(panels.analysis_panel(result.analyst_payload, **panel_kwargs))
 
 
+# ---------- /refresh-news ----------
+
+
+def _cmd_refresh_news(args: list[str], console: Console) -> None:
+    conn = duckdb_store.get_conn()
+    try:
+        with console.status("refreshing news pipeline…", spinner="dots"):
+            result = _pipeline_run(conn)
+    finally:
+        conn.close()
+    console.print(
+        f"Refreshed [bold]{result.n_stories}[/bold] stories → "
+        f"[bold]{result.n_clusters}[/bold] clusters in [bold]{result.runtime_s:.1f}s[/bold]. "
+        f"[dim]{result.n_lineage_links} lineage links from yesterday.[/dim]"
+    )
+
+
+# ---------- /trends ----------
+
+
+def _cmd_trends(args: list[str], console: Console) -> None:
+    sector = args[0] if args else None
+    conn = duckdb_store.get_conn()
+    try:
+        clusters = news_store.latest_clusters(conn)
+    finally:
+        conn.close()
+    console.print(panels.render_trends_table(clusters, sector_filter=sector))
+
+
 _COMMANDS = {
     "/help": _cmd_help,
     "/ticker": _cmd_ticker,
     "/news": _cmd_news,
     "/watch": _cmd_watch,
     "/analyze": _cmd_analyze,
+    "/refresh-news": _cmd_refresh_news,
+    "/trends": _cmd_trends,
 }
