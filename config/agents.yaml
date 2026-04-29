@@ -29,9 +29,12 @@ agents:
     description: "RSS aggregation, dedupe, clustering, summarization"
 
   critic:
-    primary: claude-sonnet-4-6
-    fallbacks: [claude-opus-4-7]
+    primary: gpt-5-mini
+    fallbacks: [gpt-5]
     description: "Adversarial review of /analyze output. Flags missing data, weak assumptions"
+    # Swap to Claude when ANTHROPIC_API_KEY is set:
+    # primary: claude-sonnet-4-6
+    # fallbacks: [claude-opus-4-7]
 
   bull_bear:
     primary: claude-sonnet-4-6
