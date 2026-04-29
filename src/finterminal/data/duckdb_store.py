@@ -20,15 +20,22 @@ def _db_path() -> Path:
     return p
 
 
-def get_conn() -> duckdb.DuckDBPyConnection:
-    """Returns a DuckDB connection. Runs migrations on first open."""
-    conn = duckdb.connect(str(_db_path()))
+def connect(path: str) -> duckdb.DuckDBPyConnection:
+    """Open a DuckDB connection at *path* and run migrations. Suitable for tests."""
+    p = Path(path).resolve()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(str(p))
     try:
         conn.execute("LOAD vss")
     except Exception:
         pass  # vss not installed yet — migration 003 will INSTALL it
     _run_migrations(conn)
     return conn
+
+
+def get_conn() -> duckdb.DuckDBPyConnection:
+    """Returns a DuckDB connection. Runs migrations on first open."""
+    return connect(str(_db_path()))
 
 
 def _run_migrations(conn: duckdb.DuckDBPyConnection) -> None:
