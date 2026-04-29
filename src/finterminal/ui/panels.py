@@ -374,3 +374,75 @@ def build_context_block(
     )
 
 
+# ---------- /trends ----------
+
+
+def render_trends_table(clusters: list[dict], sector_filter: str | None = None) -> Table | Panel:
+    """Render /trends output. clusters is from news_store.latest_clusters().
+
+    Each cluster dict has: id, as_of, story_count, source_count, top_tickers,
+    dominant_sector, representative_id, first_seen, story_count_delta, day_n.
+    """
+    if not clusters:
+        return Panel(
+            "[dim]No trend data. Run [bold]/refresh-news[/bold] first.[/dim]",
+            title="Trends",
+            border_style="dim",
+        )
+
+    if sector_filter:
+        clusters = [c for c in clusters if (c.get("dominant_sector") or "").lower() == sector_filter.lower()]
+
+    if not clusters:
+        return Panel(
+            f"[dim]No clusters for sector [bold]{sector_filter}[/bold].[/dim]",
+            title=f"Trends — {sector_filter}",
+            border_style="dim",
+        )
+
+    table = Table(
+        title=f"Trends — {sector_filter or 'All sectors'}",
+        border_style="cyan",
+        show_lines=False,
+        expand=True,
+    )
+    table.add_column("Cluster", style="dim", width=8)
+    table.add_column("Stories", justify="right", width=7)
+    table.add_column("Sources", justify="right", width=7)
+    table.add_column("Top Tickers", width=22)
+    table.add_column("Headline", ratio=1)
+    table.add_column("First Seen", width=11)
+    table.add_column("Momentum", width=12)
+
+    for c in clusters:
+        cluster_id = (c.get("id") or "")[:6]
+        story_count = str(c.get("story_count", ""))
+        source_count = str(c.get("source_count", ""))
+        tickers = ", ".join((c.get("top_tickers") or [])[:3])
+        rep_id = c.get("representative_id") or ""
+        headline = _escape_markup(rep_id[:60] if rep_id else "")
+        first_seen = ""
+        fs = c.get("first_seen")
+        if fs:
+            try:
+                first_seen = str(fs)[:10]
+            except Exception:
+                pass
+
+        # Momentum badge
+        delta = c.get("story_count_delta", 0) or 0
+        day_n = (c.get("day_n") or 0) + 1  # day_n from lineage = parent count; +1 = today
+        if day_n <= 1:
+            momentum = ""
+        elif delta > 0:
+            momentum = f"[green]▲{delta} (Day {day_n})[/green]"
+        elif delta < 0:
+            momentum = f"[red]▼{abs(delta)} (Day {day_n})[/red]"
+        else:
+            momentum = f"[dim]· (Day {day_n})[/dim]"
+
+        table.add_row(cluster_id, story_count, source_count, tickers, headline, first_seen, momentum)
+
+    as_of = (clusters[0].get("as_of") or "") if clusters else ""
+    table.caption = f"as_of {as_of} · run [bold]/refresh-news[/bold] for fresh data"
+    return table
