@@ -121,18 +121,12 @@ def _emit_cluster_momentum_signals(conn: duckdb.DuckDBPyConnection, clusters: li
         if not delta:
             continue
         ticker = (c.get("top_tickers") or [None])[0] or MACRO_TICKER
-        first_seen = c.get("first_seen")
-        if first_seen is None:
-            first_seen = datetime.utcnow()
-        if not isinstance(first_seen, datetime):
-            # convert date → datetime if needed
-            first_seen = datetime(first_seen.year, first_seen.month, first_seen.day)
         try:
             _ledger.emit_signal(
                 conn,
                 signal_type=SignalType.CLUSTER_MOMENTUM,
                 ticker=ticker,
-                ts_emitted=first_seen,
+                ts_emitted=c["first_seen"],
                 payload={"cluster_id": c["cluster_id"],
                          "story_count_delta": delta,
                          "story_count": c.get("story_count")},
