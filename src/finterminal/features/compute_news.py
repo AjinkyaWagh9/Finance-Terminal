@@ -24,7 +24,7 @@ def compute_cluster_momentum_z(conn: duckdb.DuckDBPyConnection, *,
     cutoff = ts_emitted
     rows = conn.execute(
         """
-        SELECT CAST(payload->>'story_count_delta' AS DOUBLE) AS d
+        SELECT TRY_CAST(payload->>'story_count_delta' AS DOUBLE) AS d
         FROM signals
         WHERE signal_type = ? AND ticker = ?
           AND ts_emitted < ? AND ts_emitted >= ?

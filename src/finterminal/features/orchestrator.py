@@ -55,8 +55,11 @@ def compute_for_signal(conn: duckdb.DuckDBPyConnection, *,
     for name in PLACEHOLDER_NAMES:
         out[name] = {"value": None, "is_missing": True}
 
-    # Sanity: every registered feature accounted for
+    # Invariant: every registered feature is materialized for every signal.
+    # Use raise (not assert) so `python -O` cannot silently strip the check.
     expected = {f.name for f in V1_FEATURES}
-    assert set(out.keys()) == expected, \
-        f"orchestrator missing features: {expected - set(out.keys())}"
+    if set(out.keys()) != expected:
+        raise RuntimeError(
+            f"orchestrator missing features: {expected - set(out.keys())}"
+        )
     return out
