@@ -17,6 +17,7 @@ from .news.pipeline import run as _pipeline_run
 from .data.nse import normalize_ticker
 from .ui import panels
 from .market_data.ingestion import refresh_prices
+from .outcomes.backfill import resolve_pending as _resolve_pending
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +242,20 @@ def _cmd_refresh_prices(args: list[str], console: Console) -> None:
     )
 
 
+# ---------- /backfill-outcomes ----------
+
+
+def _cmd_backfill_outcomes(args: list[str], console: Console) -> None:
+    """Resolve forward returns for every signal whose horizon has matured."""
+    conn = duckdb_store.get_conn()
+    try:
+        with console.status("resolving pending signal outcomes…", spinner="dots"):
+            n = _resolve_pending(conn)
+    finally:
+        conn.close()
+    console.print(f"Resolved [bold]{n}[/bold] signal/horizon pairs.")
+
+
 _COMMANDS = {
     "/help": _cmd_help,
     "/ticker": _cmd_ticker,
@@ -250,4 +265,5 @@ _COMMANDS = {
     "/refresh-news": _cmd_refresh_news,
     "/refresh-prices": _cmd_refresh_prices,
     "/trends": _cmd_trends,
+    "/backfill-outcomes": _cmd_backfill_outcomes,
 }
