@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import date, timedelta
 
 from rich.console import Console
 
@@ -15,6 +16,7 @@ from .data import duckdb_store, news_store, openbb_client
 from .news.pipeline import run as _pipeline_run
 from .data.nse import normalize_ticker
 from .ui import panels
+from .market_data.ingestion import refresh_prices
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +222,25 @@ def _cmd_trends(args: list[str], console: Console) -> None:
     console.print(panels.render_trends_table(clusters, sector_filter=sector))
 
 
+# ---------- /refresh-prices ----------
+
+
+def _cmd_refresh_prices(args: list[str], console: Console) -> None:
+    """Pull NSE bhavcopy + indices for the last 30 calendar days (idempotent)."""
+    end = date.today() - timedelta(days=1)  # NSE doesn't publish today's bhav until late evening
+    start = end - timedelta(days=30)
+    conn = duckdb_store.get_conn()
+    try:
+        with console.status("refreshing prices…", spinner="dots"):
+            result = refresh_prices(conn, start=start, end=end)
+    finally:
+        conn.close()
+    console.print(
+        f"Attempted [bold]{len(result['dates_attempted'])}[/bold] trading days; "
+        f"skipped [bold]{len(result['dates_skipped_holiday'])}[/bold] non-trading days."
+    )
+
+
 _COMMANDS = {
     "/help": _cmd_help,
     "/ticker": _cmd_ticker,
@@ -227,5 +248,6 @@ _COMMANDS = {
     "/watch": _cmd_watch,
     "/analyze": _cmd_analyze,
     "/refresh-news": _cmd_refresh_news,
+    "/refresh-prices": _cmd_refresh_prices,
     "/trends": _cmd_trends,
 }
