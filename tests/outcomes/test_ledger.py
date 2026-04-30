@@ -1,5 +1,5 @@
 # tests/outcomes/test_ledger.py
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import pytest
 from finterminal.data.duckdb_store import connect
 from finterminal.outcomes.ledger import emit_signal
@@ -55,3 +55,37 @@ def test_emit_signal_snapshots_regime(tmp_path):
         "SELECT regime_nifty_close FROM signals WHERE signal_id=?", [sid]
     ).fetchone()[0]
     assert nifty == 22000.0
+
+
+def test_emit_signal_normalizes_tzaware_to_ist_naive(tmp_path):
+    # 2026-04-29 23:00 UTC == 2026-04-30 04:30 IST. Stored ts_emitted must be
+    # the IST wall-clock, and regime must be snapshot on the IST date so the
+    # row's regime matches its stored timestamp.
+    conn = connect(str(tmp_path / "t.duckdb"))
+    upsert_prices_eod(conn, [{
+        "trade_date": date(2026, 4, 29), "ticker": "_NIFTY50",
+        "open": 22000, "high": 22000, "low": 22000, "close": 22000.0, "volume": 0,
+    }], source="nse_indices")
+    sid = emit_signal(conn,
+        signal_type=SignalType.CLUSTER_MOMENTUM, ticker="TCS",
+        ts_emitted=datetime(2026, 4, 29, 23, 0, tzinfo=timezone.utc),
+    )
+    row = conn.execute(
+        "SELECT ts_emitted, regime_nifty_close FROM signals WHERE signal_id=?",
+        [sid],
+    ).fetchone()
+    assert row[0] == datetime(2026, 4, 30, 4, 30)  # IST wall-clock, naive
+    assert row[1] == 22000.0  # regime snapshot used 2026-04-29 (last close ≤ IST date)
+
+
+def test_emit_signal_dedups_across_naive_and_tzaware_inputs(tmp_path):
+    # Same instant expressed two ways (naive IST vs UTC tz-aware) must dedup.
+    conn = connect(str(tmp_path / "t.duckdb"))
+    _seed_nifty(conn)
+    naive_ist = datetime(2026, 4, 30, 4, 30)
+    tzaware_utc = datetime(2026, 4, 29, 23, 0, tzinfo=timezone.utc)
+    sid1 = emit_signal(conn, signal_type=SignalType.CLUSTER_MOMENTUM,
+                       ticker="TCS", ts_emitted=naive_ist)
+    sid2 = emit_signal(conn, signal_type=SignalType.CLUSTER_MOMENTUM,
+                       ticker="TCS", ts_emitted=tzaware_utc)
+    assert sid1 is not None and sid2 is None

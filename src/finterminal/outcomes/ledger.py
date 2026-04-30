@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import duckdb
 
@@ -11,6 +12,18 @@ from finterminal.market_data.macro import snapshot_regime
 from .schema import (
     SignalType, SIGNAL_REGISTRY, HORIZONS_DAYS, REGIME_FIELDS,
 )
+
+_IST = ZoneInfo("Asia/Kolkata")
+
+
+def _to_ist_naive(ts: datetime) -> datetime:
+    # DuckDB TIMESTAMP is naive; tz-aware values get silently shifted on insert.
+    # Normalize to IST wall-clock so date() and the dedup key stay consistent
+    # with the stored value.
+    if ts.tzinfo is not None:
+        ts = ts.astimezone(_IST).replace(tzinfo=None)
+    return ts
+
 
 def emit_signal(conn: duckdb.DuckDBPyConnection, *,
                 signal_type: SignalType | str,
@@ -25,6 +38,7 @@ def emit_signal(conn: duckdb.DuckDBPyConnection, *,
     st = SignalType(signal_type) if not isinstance(signal_type, SignalType) else signal_type
     engine = SIGNAL_REGISTRY[st]  # raises KeyError on unknown — surfaced to caller
 
+    ts_emitted = _to_ist_naive(ts_emitted)
     regime = snapshot_regime(conn, as_of=ts_emitted.date())
 
     signal_id = str(uuid.uuid4())
