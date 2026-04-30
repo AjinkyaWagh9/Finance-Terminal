@@ -18,6 +18,7 @@ from .data.nse import normalize_ticker
 from .ui import panels
 from .market_data.ingestion import refresh_prices
 from .outcomes.backfill import resolve_pending as _resolve_pending
+from .commands_features import features_inspect
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +257,19 @@ def _cmd_backfill_outcomes(args: list[str], console: Console) -> None:
     console.print(f"Resolved [bold]{n}[/bold] signal/horizon pairs.")
 
 
+# ---------- /features ----------
+
+
+def _cmd_features(args: list[str], console: Console) -> None:
+    """Inspect features for a signal."""
+    signal_id = _require_one(args, "/features SIGNAL_ID  (e.g. /features sig-20250101-001)")
+    conn = duckdb_store.get_conn()
+    try:
+        features_inspect(conn, signal_id)
+    finally:
+        conn.close()
+
+
 _COMMANDS = {
     "/help": _cmd_help,
     "/ticker": _cmd_ticker,
@@ -266,4 +280,5 @@ _COMMANDS = {
     "/refresh-prices": _cmd_refresh_prices,
     "/trends": _cmd_trends,
     "/backfill-outcomes": _cmd_backfill_outcomes,
+    "/features": _cmd_features,
 }
