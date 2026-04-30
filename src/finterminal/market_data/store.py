@@ -42,6 +42,15 @@ def last_close_on_or_before(conn: duckdb.DuckDBPyConnection,
     ).fetchone()
     return row[0] if row else None
 
+def has_ok_ingestion(conn: duckdb.DuckDBPyConnection, *,
+                     source: str, target_date: date) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM ingestion_log "
+        "WHERE source = ? AND target_date = ? AND status = 'ok' LIMIT 1",
+        [source, target_date],
+    ).fetchone()
+    return row is not None
+
 def log_start(conn: duckdb.DuckDBPyConnection, *,
               source: str, target_date: date) -> str:
     log_id = str(uuid.uuid4())

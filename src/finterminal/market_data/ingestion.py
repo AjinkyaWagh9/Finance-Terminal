@@ -19,16 +19,29 @@ def refresh_prices(conn: duckdb.DuckDBPyConnection, *,
                    start: date, end: date) -> dict[str, list[date]]:
     attempted: list[date] = []
     skipped:   list[date] = []
+    cached:    list[date] = []
     d = start
     while d <= end:
         if not calendar.is_trading_day(d):
             for source, _, _ in _SOURCES:
+                if store.has_ok_ingestion(conn, source=source, target_date=d):
+                    continue
                 log_id = store.log_start(conn, source=source, target_date=d)
                 store.log_finish(conn, log_id, status="skipped_holiday")
             skipped.append(d)
         else:
+            all_cached = all(
+                store.has_ok_ingestion(conn, source=source, target_date=d)
+                for source, _, _ in _SOURCES
+            )
+            if all_cached:
+                cached.append(d)
+                d += timedelta(days=1)
+                continue
             attempted.append(d)
             for source, url_for, parse in _SOURCES:
+                if store.has_ok_ingestion(conn, source=source, target_date=d):
+                    continue
                 log_id = store.log_start(conn, source=source, target_date=d)
                 try:
                     blob = _http.fetch(url_for(d))
@@ -44,4 +57,8 @@ def refresh_prices(conn: duckdb.DuckDBPyConnection, *,
                     log.exception("ingest %s %s failed", source, d)
                     store.log_finish(conn, log_id, status="parse_error", note=str(e)[:200])
         d += timedelta(days=1)
-    return {"dates_attempted": attempted, "dates_skipped_holiday": skipped}
+    return {
+        "dates_attempted": attempted,
+        "dates_skipped_holiday": skipped,
+        "dates_already_ingested": cached,
+    }

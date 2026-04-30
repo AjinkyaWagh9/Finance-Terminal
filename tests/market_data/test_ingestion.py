@@ -46,3 +46,23 @@ def test_refresh_prices_handles_404_per_date(tmp_path):
     ).fetchall()
     statuses = {r[0] for r in rows}
     assert statuses == {"skipped_holiday"}  # 404 → treated as holiday
+
+def test_refresh_prices_skips_already_ingested_days(tmp_path):
+    conn = connect(str(tmp_path / "t.duckdb"))
+    calls: list[str] = []
+
+    def fake_fetch(url):
+        calls.append(url)
+        if "cm29APR2026" in url: return _bhav_blob()
+        if "29042026" in url:    return _idx_blob()
+        raise Http404(url)
+
+    with patch("finterminal.market_data.ingestion._http.fetch", side_effect=fake_fetch):
+        first = refresh_prices(conn, start=date(2026, 4, 29), end=date(2026, 4, 29))
+        first_calls = len(calls)
+        second = refresh_prices(conn, start=date(2026, 4, 29), end=date(2026, 4, 29))
+
+    assert first["dates_attempted"] == [date(2026, 4, 29)]
+    assert second["dates_attempted"] == []
+    assert second["dates_already_ingested"] == [date(2026, 4, 29)]
+    assert len(calls) == first_calls  # no extra HTTP on the second pass
