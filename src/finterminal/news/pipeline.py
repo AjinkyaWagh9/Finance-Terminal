@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -15,6 +16,8 @@ from .cluster import cluster_stories
 from .lineage import match_clusters
 from .tagger import tag
 from ..data import news_store
+from ..outcomes import ledger as _ledger
+from ..outcomes.schema import SignalType, MACRO_TICKER
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +89,19 @@ def run(conn: duckdb.DuckDBPyConnection) -> PipelineResult:
     news_store.upsert_lineage(conn, links)
     logger.info("%d lineage links created", len(links))
 
+    # Build cluster dicts with story_count_delta for emission
+    delta_by_child: dict[str, int] = {lk.child_id: lk.story_count_delta for lk in links}
+    clusters_with_delta = []
+    for cl in clusters:
+        clusters_with_delta.append({
+            "cluster_id": cl.id,
+            "top_tickers": cl.top_tickers,
+            "story_count": cl.story_count,
+            "story_count_delta": delta_by_child.get(cl.id, 0),
+            "first_seen": cl.first_seen,
+        })
+    _emit_cluster_momentum_signals(conn, clusters_with_delta)
+
     return PipelineResult(
         as_of=today,
         n_stories=len(stories),
@@ -93,3 +109,38 @@ def run(conn: duckdb.DuckDBPyConnection) -> PipelineResult:
         n_lineage_links=len(links),
         runtime_s=time.monotonic() - t0,
     )
+
+
+def _emit_cluster_momentum_signals(conn: duckdb.DuckDBPyConnection, clusters: list[dict]) -> None:
+    """Fail-safe: emit cluster_momentum signals after a /refresh-news run.
+    Any exception in emission is swallowed so the news pipeline keeps working."""
+    if os.environ.get("OUTCOMES_LEDGER_ENABLED") != "1":
+        return
+    for c in clusters:
+        delta = c.get("story_count_delta", 0)
+        if not delta:
+            continue
+        ticker = (c.get("top_tickers") or [None])[0] or MACRO_TICKER
+        first_seen = c.get("first_seen")
+        if first_seen is None:
+            first_seen = datetime.utcnow()
+        if not isinstance(first_seen, datetime):
+            # convert date → datetime if needed
+            first_seen = datetime(first_seen.year, first_seen.month, first_seen.day)
+        try:
+            _ledger.emit_signal(
+                conn,
+                signal_type=SignalType.CLUSTER_MOMENTUM,
+                ticker=ticker,
+                ts_emitted=first_seen,
+                payload={"cluster_id": c["cluster_id"],
+                         "story_count_delta": delta,
+                         "story_count": c.get("story_count")},
+                confidence=min(1.0, abs(delta) / 10.0),
+                why=(f"cluster {c['cluster_id']} "
+                     f"{'grew' if delta > 0 else 'shrank'} {abs(delta)} stories d/d"),
+                source_ref=c["cluster_id"],
+            )
+        except Exception as e:
+            logger.warning("emit_signal failed for cluster %s: %s",
+                           c.get("cluster_id"), e)
