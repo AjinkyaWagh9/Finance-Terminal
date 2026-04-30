@@ -25,6 +25,14 @@ def _to_ist_naive(ts: datetime) -> datetime:
     return ts
 
 
+# Module-level patchable stub — real implementation is lazy-loaded on first call
+# to avoid circular import (features/ imports outcomes.schema at load time).
+# Tests can patch this name directly: patch("finterminal.outcomes.ledger.compute_for_signal").
+def compute_for_signal(*args: Any, **kwargs: Any) -> Any:  # pragma: no cover
+    from finterminal.features.orchestrator import compute_for_signal as _real
+    return _real(*args, **kwargs)
+
+
 def emit_signal(conn: duckdb.DuckDBPyConnection, *,
                 signal_type: SignalType | str,
                 ticker: str,
@@ -33,10 +41,15 @@ def emit_signal(conn: duckdb.DuckDBPyConnection, *,
                 confidence: float | None = None,
                 why: str | None = None,
                 source_ref: str | None = None) -> str | None:
-    """Insert a signal + 5 outcome stubs. Idempotent on (signal_type, ticker, ts_emitted).
-    Returns new signal_id, or None if the row was a duplicate."""
+    """Insert a signal + 5 outcome stubs + feature vector. Idempotent on
+    (signal_type, ticker, ts_emitted). Returns new signal_id, or None if duplicate."""
+    # Function-local imports — avoids circular import at module load time
+    # (features/ imports outcomes.schema; top-level import would be circular).
+    # compute_for_signal is a module-level patchable stub (above); upsert_features is local.
+    from finterminal.features.store import upsert_features
+
     st = SignalType(signal_type) if not isinstance(signal_type, SignalType) else signal_type
-    engine = SIGNAL_REGISTRY[st]  # raises KeyError on unknown — surfaced to caller
+    engine = SIGNAL_REGISTRY[st]
 
     ts_emitted = _to_ist_naive(ts_emitted)
     regime = snapshot_regime(conn, as_of=ts_emitted.date())
@@ -50,18 +63,32 @@ def emit_signal(conn: duckdb.DuckDBPyConnection, *,
             *(regime[f] for f in REGIME_FIELDS)]
     placeholders = ",".join("?" * len(cols))
 
-    before = conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
-    conn.execute(
-        f"INSERT INTO signals ({','.join(cols)}) VALUES ({placeholders}) "
-        f"ON CONFLICT (signal_type, ticker, ts_emitted) DO NOTHING",
-        vals,
-    )
-    after = conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
-    if after == before:
-        return None  # dedup'd
+    conn.execute("BEGIN")
+    try:
+        before = conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
+        conn.execute(
+            f"INSERT INTO signals ({','.join(cols)}) VALUES ({placeholders}) "
+            f"ON CONFLICT (signal_type, ticker, ts_emitted) DO NOTHING",
+            vals,
+        )
+        after = conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
+        if after == before:
+            conn.execute("ROLLBACK")
+            return None  # duplicate
 
-    conn.executemany(
-        "INSERT INTO signal_outcomes (signal_id, horizon_days) VALUES (?, ?)",
-        [(signal_id, h) for h in HORIZONS_DAYS],
-    )
-    return signal_id
+        conn.executemany(
+            "INSERT INTO signal_outcomes (signal_id, horizon_days) VALUES (?, ?)",
+            [(signal_id, h) for h in HORIZONS_DAYS],
+        )
+
+        features = compute_for_signal(
+            conn, signal_id=signal_id, signal_type=st, ticker=ticker,
+            ts_emitted=ts_emitted, payload=payload or {},
+        )
+        upsert_features(conn, signal_id, features)
+
+        conn.execute("COMMIT")
+        return signal_id
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
