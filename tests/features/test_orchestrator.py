@@ -44,3 +44,50 @@ def test_compute_for_signal_marks_cluster_z_missing_for_other_signal_types(tmp_p
     )
     assert out["cluster_momentum_z"]["is_missing"] is True
     assert out["narrative_price_divergence"]["is_missing"] is True
+
+def test_quality_features_present_in_output(tmp_path):
+    """All four quality features must be in the output dict, even if is_missing."""
+    from finterminal.data.duckdb_store import connect as _connect
+    conn = _connect(str(tmp_path / "t.duckdb"))
+    upsert_prices_eod(conn, [{
+        "trade_date": date(2026, 4, 28), "ticker": "_NIFTY50",
+        "open": 22000, "high": 22000, "low": 22000, "close": 22000.0, "volume": 0,
+    }], source="nse_indices")
+    out = compute_for_signal(
+        conn, signal_id="test-q", signal_type=SignalType.CLUSTER_MOMENTUM,
+        ticker="TCS", ts_emitted=datetime(2026, 4, 29, 10, 0),
+        payload={"cluster_id": "c1"},
+    )
+    for name in ("roe", "leverage", "earnings_growth", "quality_score"):
+        assert name in out, f"{name} missing from orchestrator output"
+        assert "value" in out[name] and "is_missing" in out[name]
+
+def test_quality_features_computed_when_fundamentals_seeded(tmp_path):
+    """With 3+ tickers fundamentals seeded, quality features should not be missing."""
+    from finterminal.data.duckdb_store import connect as _connect, upsert_fundamentals
+    conn = _connect(str(tmp_path / "t.duckdb"))
+    upsert_prices_eod(conn, [{
+        "trade_date": date(2026, 4, 28), "ticker": "_NIFTY50",
+        "open": 22000, "high": 22000, "low": 22000, "close": 22000.0, "volume": 0,
+    }], source="nse_indices")
+    as_of = date(2026, 1, 1)
+    as_of_prev = date(2025, 10, 1)
+    for ticker, roe, d2e, ni_curr, ni_prev in [
+        ("TCS",   0.20, 0.3, 1200.0, 1000.0),
+        ("INFY",  0.15, 0.5, 900.0,  800.0),
+        ("WIPRO", 0.10, 0.8, 500.0,  450.0),
+    ]:
+        upsert_fundamentals(conn, {"ticker": ticker, "as_of": as_of,
+                                   "roe": roe, "debt_to_equity": d2e,
+                                   "net_income_ttm": ni_curr})
+        upsert_fundamentals(conn, {"ticker": ticker, "as_of": as_of_prev,
+                                   "net_income_ttm": ni_prev})
+    out = compute_for_signal(
+        conn, signal_id="test-q2", signal_type=SignalType.CLUSTER_MOMENTUM,
+        ticker="TCS", ts_emitted=datetime(2026, 4, 29, 10, 0),
+        payload={"cluster_id": "c1"},
+    )
+    assert out["roe"]["is_missing"]            is False
+    assert out["leverage"]["is_missing"]       is False
+    assert out["earnings_growth"]["is_missing"] is False
+    assert out["quality_score"]["is_missing"]   is False

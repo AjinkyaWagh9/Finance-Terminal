@@ -34,9 +34,9 @@ def test_v1_features_unique_names():
     names = [f.name for f in V1_FEATURES]
     assert len(set(names)) == len(names)
 
-def test_computable_count_is_11_and_placeholders_7():
-    assert len(COMPUTABLE_NAMES) == 11
-    assert len(PLACEHOLDER_NAMES) == 7
+def test_computable_count_is_15_and_placeholders_3():
+    assert len(COMPUTABLE_NAMES) == 15
+    assert len(PLACEHOLDER_NAMES) == 3
 
 def test_required_feature_names_present():
     expected = {

@@ -24,7 +24,7 @@ def test_emit_signal_writes_features(tmp_path):
     n = conn.execute(
         "SELECT COUNT(*) FROM signal_features WHERE signal_id=?", [sid]
     ).fetchone()[0]
-    assert n == 18   # 11 computable (most missing due to thin seed) + 7 placeholders
+    assert n == 18   # 15 computable (most missing due to thin seed) + 3 reflexivity placeholders
 
 def test_emit_signal_rolls_back_when_features_throw(tmp_path):
     conn = connect(str(tmp_path / "t.duckdb"))

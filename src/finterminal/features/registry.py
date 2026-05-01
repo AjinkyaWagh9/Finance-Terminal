@@ -36,11 +36,11 @@ V1_FEATURES: tuple[FeatureSpec, ...] = (
     # News (compute_news.py)
     FeatureSpec("cluster_momentum_z",      "cluster_momentum_z",       "signals.payload"),
     FeatureSpec("narrative_price_divergence", "narrative_price_divergence", "derived"),
-    # Quality placeholders (#3 fills these)
-    FeatureSpec("roe",                     None, "fundamentals (#3)"),
-    FeatureSpec("leverage",                None, "fundamentals (#3)"),
-    FeatureSpec("earnings_growth",         None, "fundamentals (#3)"),
-    FeatureSpec("quality_score",           None, "derived (#3)"),
+    # Quality (#3)
+    FeatureSpec("roe",             "roe",              "fundamentals"),
+    FeatureSpec("leverage",        "leverage",          "fundamentals"),
+    FeatureSpec("earnings_growth", "earnings_growth",   "fundamentals"),
+    FeatureSpec("quality_score",   "quality_score",     "derived"),
     # Reflexivity placeholders (#4 fills these)
     FeatureSpec("sentiment_level",         None, "Grok / news (#4)"),
     FeatureSpec("sentiment_delta",         None, "derived (#4)"),

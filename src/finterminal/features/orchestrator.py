@@ -5,7 +5,7 @@ from typing import Any
 import duckdb
 
 from .registry import V1_FEATURES, PLACEHOLDER_NAMES
-from . import compute_price, compute_regime, compute_news
+from . import compute_price, compute_regime, compute_news, compute_quality
 from finterminal.outcomes.schema import SignalType
 
 def compute_for_signal(conn: duckdb.DuckDBPyConnection, *,
@@ -51,7 +51,19 @@ def compute_for_signal(conn: duckdb.DuckDBPyConnection, *,
         cluster_momentum_z=cmz_v, mom_7d_z=mom_7d_z_v)
     out["narrative_price_divergence"] = {"value": div_v, "is_missing": div_m}
 
-    # Placeholders
+    # Quality block (#3)
+    roe_v, roe_m = compute_quality.compute_roe(conn, **ctx)
+    out["roe"] = {"value": roe_v, "is_missing": roe_m}
+    lev_v, lev_m = compute_quality.compute_leverage(conn, **ctx)
+    out["leverage"] = {"value": lev_v, "is_missing": lev_m}
+    eg_v, eg_m = compute_quality.compute_earnings_growth(conn, **ctx)
+    out["earnings_growth"] = {"value": eg_v, "is_missing": eg_m}
+    qs_v, qs_m = compute_quality.compute_quality_score(
+        conn, roe_value=roe_v, leverage_value=lev_v,
+        earnings_growth_value=eg_v, **ctx)
+    out["quality_score"] = {"value": qs_v, "is_missing": qs_m}
+
+    # Placeholders (reflexivity — #4 fills these)
     for name in PLACEHOLDER_NAMES:
         out[name] = {"value": None, "is_missing": True}
 
