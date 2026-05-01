@@ -344,3 +344,42 @@ def recent_analysis(
         "degraded": degraded,
         "critic_error": critic_error,
     }
+
+
+# ---------- mgmt_claims ----------
+
+def insert_mgmt_claim(conn: duckdb.DuckDBPyConnection, c: dict) -> str:
+    """Insert a management claim record. Returns the new claim_id (uuid4)."""
+    claim_id = str(uuid.uuid4())
+    conn.execute(
+        """
+        INSERT INTO mgmt_claims
+            (claim_id, ticker, claimed_at, claim_text, horizon_days,
+             outcome_date, outcome_verified, source_ref)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            claim_id,
+            c["ticker"],
+            c["claimed_at"],
+            c["claim_text"],
+            c["horizon_days"],
+            c.get("outcome_date"),
+            c.get("outcome_verified"),
+            c.get("source_ref"),
+        ],
+    )
+    return claim_id
+
+
+def list_mgmt_claims(conn: duckdb.DuckDBPyConnection, ticker: str) -> list[dict]:
+    """Return all claims for `ticker`, most recent first."""
+    rows = conn.execute(
+        "SELECT claim_id, ticker, claimed_at, claim_text, horizon_days, "
+        "       outcome_date, outcome_verified, source_ref "
+        "FROM mgmt_claims WHERE ticker = ? ORDER BY claimed_at DESC",
+        [ticker],
+    ).fetchall()
+    cols = ["claim_id", "ticker", "claimed_at", "claim_text", "horizon_days",
+            "outcome_date", "outcome_verified", "source_ref"]
+    return [dict(zip(cols, r)) for r in rows]
