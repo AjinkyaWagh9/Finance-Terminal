@@ -83,3 +83,55 @@ def test_compute_earnings_growth_negative_growth(tmp_path):
     v, m = compute_earnings_growth(conn, ticker="TCS", ts_emitted=TS)
     assert m is False
     assert abs(v - (-0.20)) < 1e-9
+
+from finterminal.features.compute_quality import compute_quality_score
+
+def test_compute_quality_score_missing_when_any_input_is_none(tmp_path):
+    conn = connect(str(tmp_path / "t.duckdb"))
+    v, m = compute_quality_score(conn, ticker="TCS", ts_emitted=TS,
+                                  roe_value=None, leverage_value=0.5,
+                                  earnings_growth_value=0.1)
+    assert v is None and m is True
+
+def test_compute_quality_score_missing_when_fewer_than_3_tickers(tmp_path):
+    conn = connect(str(tmp_path / "t.duckdb"))
+    # Only 2 tickers — below MIN_CROSS_SECTION_COUNT
+    _seed(conn, "TCS", date(2026, 1, 1), roe=0.2, d2e=0.3)
+    _seed(conn, "INFY", date(2026, 1, 1), roe=0.15, d2e=0.5)
+    v, m = compute_quality_score(conn, ticker="TCS", ts_emitted=TS,
+                                  roe_value=0.2, leverage_value=0.3,
+                                  earnings_growth_value=0.1)
+    assert v is None and m is True
+
+def test_compute_quality_score_returns_float_with_3_tickers(tmp_path):
+    conn = connect(str(tmp_path / "t.duckdb"))
+    _seed(conn, "TCS",  date(2026, 1, 1), roe=0.20, d2e=0.3)
+    _seed(conn, "INFY", date(2026, 1, 1), roe=0.15, d2e=0.5)
+    _seed(conn, "WIPRO", date(2026, 1, 1), roe=0.10, d2e=0.8)
+    v, m = compute_quality_score(conn, ticker="TCS", ts_emitted=TS,
+                                  roe_value=0.20, leverage_value=0.3,
+                                  earnings_growth_value=0.10)
+    assert m is False
+    assert isinstance(v, float)
+
+def test_compute_quality_score_best_company_positive(tmp_path):
+    """Highest roe, lowest leverage → quality_score should be > 0."""
+    conn = connect(str(tmp_path / "t.duckdb"))
+    _seed(conn, "BEST",  date(2026, 1, 1), roe=0.30, d2e=0.1)
+    _seed(conn, "MID",   date(2026, 1, 1), roe=0.15, d2e=0.5)
+    _seed(conn, "WORST", date(2026, 1, 1), roe=0.05, d2e=1.5)
+    v, m = compute_quality_score(conn, ticker="BEST", ts_emitted=TS,
+                                  roe_value=0.30, leverage_value=0.1,
+                                  earnings_growth_value=0.20)
+    assert m is False and v > 0
+
+def test_compute_quality_score_worst_company_negative(tmp_path):
+    """Lowest roe, highest leverage → quality_score should be < 0."""
+    conn = connect(str(tmp_path / "t.duckdb"))
+    _seed(conn, "BEST",  date(2026, 1, 1), roe=0.30, d2e=0.1)
+    _seed(conn, "MID",   date(2026, 1, 1), roe=0.15, d2e=0.5)
+    _seed(conn, "WORST", date(2026, 1, 1), roe=0.05, d2e=1.5)
+    v, m = compute_quality_score(conn, ticker="WORST", ts_emitted=TS,
+                                  roe_value=0.05, leverage_value=1.5,
+                                  earnings_growth_value=-0.10)
+    assert m is False and v < 0
