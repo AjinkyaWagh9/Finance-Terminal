@@ -19,6 +19,7 @@ REGIME_VOL_MEDIAN_LOOKBACK_DAYS = 252
 # price-derived features. Same threshold applies to _NIFTY50 for regime.
 MAX_PRICE_STALENESS_DAYS = 5
 MAX_NIFTY_STALENESS_DAYS = 5
+MAX_FUNDAMENTALS_STALENESS_DAYS = 120   # one quarter
 
 V1_FEATURES: tuple[FeatureSpec, ...] = (
     # Price (compute_price.py)
