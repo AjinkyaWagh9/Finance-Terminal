@@ -176,3 +176,91 @@ def compute_sentiment_delta(
     delta = _weighted_mean(articles_now) - _weighted_mean(articles_prev)
     n = len(articles_now) + len(articles_prev)
     return _make_cell(delta, False, n_samples=n, debug=debug)
+
+
+def _entropy(scores: list[float]) -> float:
+    """Shannon entropy over VADER neg/neu/pos bins."""
+    n = len(scores)
+    if n == 0:
+        return 0.0
+    counts = {"neg": 0, "neu": 0, "pos": 0}
+    for s in scores:
+        if s < -0.05:
+            counts["neg"] += 1
+        elif s > 0.05:
+            counts["pos"] += 1
+        else:
+            counts["neu"] += 1
+    h = 0.0
+    for c in counts.values():
+        if c > 0:
+            p = c / n
+            h -= p * math.log(p)
+    return h
+
+
+def compute_entropy_sentiment(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    ticker: str,
+    ts_emitted: datetime,
+    **_,
+) -> dict:
+    """Shannon entropy of sentiment-bin distribution over [ts-7d, ts]."""
+    start = ts_emitted - timedelta(days=_WINDOW_DAYS)
+    articles = _fetch_articles(conn, ticker, start, ts_emitted)
+    debug = _debug_dict(articles)
+    if not _passes_quality_gate(articles):
+        return _make_cell(None, True, debug=debug)
+    value = _entropy([a.compound for a in articles])
+    return _make_cell(value, False, n_samples=len(articles), debug=debug)
+
+
+def compute_entropy_change(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    ticker: str,
+    ts_emitted: datetime,
+    **_,
+) -> dict:
+    """Delta of Shannon entropy between non-overlapping 7-day windows."""
+    boundary    = ts_emitted - timedelta(days=_WINDOW_DAYS)
+    prior_start = ts_emitted - timedelta(days=2 * _WINDOW_DAYS)
+    articles_now  = _fetch_articles(conn, ticker, boundary, ts_emitted)
+    articles_prev = _fetch_articles(conn, ticker, prior_start, boundary)
+    debug = {"now": _debug_dict(articles_now), "prev": _debug_dict(articles_prev)}
+    if not _passes_quality_gate(articles_now) or not _passes_quality_gate(articles_prev):
+        return _make_cell(None, True, debug=debug)
+    h_now  = _entropy([a.compound for a in articles_now])
+    h_prev = _entropy([a.compound for a in articles_prev])
+    n = len(articles_now) + len(articles_prev)
+    return _make_cell(h_now - h_prev, False, n_samples=n, debug=debug)
+
+
+_LOG3 = math.log(3)
+
+
+def compute_feature_health(
+    *,
+    sentiment_level: dict,
+    entropy_sentiment: dict,
+    **_,
+) -> dict:
+    """Meta-signal: how trustworthy is this signal's narrative state?
+
+    health = confidence_level * (1 - entropy_norm)
+    where entropy_norm = entropy_sentiment / log(3)  ∈ [0, 1]
+
+    High → high-confidence consensus (model can lean on this signal).
+    Low  → either thin data or maximally split narrative.
+    Missing whenever either input is missing.
+    """
+    if sentiment_level.get("is_missing") or entropy_sentiment.get("is_missing"):
+        return _make_cell(None, True, debug={})
+    conf = float(sentiment_level.get("confidence") or 0.0)
+    h    = float(entropy_sentiment.get("value") or 0.0)
+    h_norm = max(0.0, min(1.0, h / _LOG3))
+    health = conf * (1.0 - h_norm)
+    n = int(sentiment_level.get("n_samples") or 0)
+    return _make_cell(health, False, n_samples=n,
+                      debug={"conf": conf, "entropy_norm": h_norm})

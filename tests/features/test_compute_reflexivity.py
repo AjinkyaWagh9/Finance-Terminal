@@ -227,3 +227,138 @@ def test_sentiment_delta_negative_when_sentiment_deteriorates(tmp_path):
     cell = compute_sentiment_delta(conn, ticker="TCS", ts_emitted=TS)
     assert cell["is_missing"] is False
     assert cell["value"] < 0
+
+
+# ── entropy_sentiment ────────────────────────────────────────────────────────
+
+from finterminal.features.compute_reflexivity import compute_entropy_sentiment
+
+
+def test_entropy_missing_when_insufficient_articles(tmp_path):
+    conn = connect(str(tmp_path / "t.duckdb"))
+    cell = compute_entropy_sentiment(conn, ticker="TCS", ts_emitted=TS)
+    assert cell["is_missing"] is True
+
+
+def test_entropy_max_when_three_equal_bins(tmp_path):
+    conn = connect(str(tmp_path / "t.duckdb"))
+    pos = ["record profits soar strong earnings growth rally",
+           "outstanding revenue beats expectations significantly higher"]
+    neu = ["company held annual general meeting today",
+           "board approved routine agenda items quarterly"]
+    neg = ["massive loss debt default bankruptcy crisis collapse",
+           "severe decline revenue miss disappointing earnings crash"]
+    for h in pos + neu + neg:
+        _seed_story(conn, h, TS - timedelta(hours=1))
+    cell = compute_entropy_sentiment(conn, ticker="TCS", ts_emitted=TS)
+    if not cell["is_missing"]:
+        assert cell["value"] <= math.log(3) + 0.01
+        assert cell["n_samples"] == 6
+        assert cell["feature_version"] == FEATURE_VERSION
+
+
+def test_entropy_is_deterministic(tmp_path):
+    conn = connect(str(tmp_path / "t.duckdb"))
+    pos = ["record profits soar strong earnings growth rally",
+           "outstanding revenue beats expectations significantly higher"]
+    neg = ["massive loss debt default bankruptcy crisis collapse",
+           "severe decline revenue miss disappointing earnings crash"]
+    neu = ["company held annual general meeting today",
+           "board approved routine agenda items quarterly"]
+    for h in pos + neg + neu:
+        _seed_story(conn, h, TS - timedelta(hours=1))
+    a = compute_entropy_sentiment(conn, ticker="TCS", ts_emitted=TS)
+    for i in range(5):
+        _seed_story(conn, f"future news {i}", TS + timedelta(days=i + 1))
+    b = compute_entropy_sentiment(conn, ticker="TCS", ts_emitted=TS)
+    assert a["value"] == b["value"]
+    assert a["is_missing"] == b["is_missing"]
+
+
+# ── entropy_change ───────────────────────────────────────────────────────────
+
+from finterminal.features.compute_reflexivity import compute_entropy_change
+
+
+def test_entropy_change_missing_when_either_window_fails(tmp_path):
+    conn = connect(str(tmp_path / "t.duckdb"))
+    headlines = ["record profits soar strong earnings growth rally x",
+                 "outstanding revenue beats expectations significantly x",
+                 "massive loss debt default bankruptcy crisis x",
+                 "severe decline miss disappointing earnings x",
+                 "mixed results moderate neutral report x",
+                 "company board meeting schedule x"]
+    for h in headlines:
+        _seed_story(conn, h, TS - timedelta(hours=1))
+    cell = compute_entropy_change(conn, ticker="TCS", ts_emitted=TS)
+    assert cell["is_missing"] is True
+
+
+def test_entropy_change_is_deterministic(tmp_path):
+    conn = connect(str(tmp_path / "t.duckdb"))
+    boundary = TS - timedelta(days=7)
+    base = [
+        ("record profits soar strong growth A", boundary - timedelta(hours=2)),
+        ("outstanding revenue beats B",          boundary - timedelta(hours=4)),
+        ("massive loss default C",               boundary - timedelta(hours=6)),
+        ("severe decline miss D",                boundary - timedelta(hours=8)),
+        ("company held meeting E",               boundary - timedelta(hours=10)),
+        ("board approved agenda F",              boundary - timedelta(hours=12)),
+        ("record profits soar strong 1",         TS - timedelta(hours=2)),
+        ("outstanding revenue beats 2",          TS - timedelta(hours=4)),
+        ("strong profit growth 3",               TS - timedelta(hours=6)),
+        ("earnings beat forecast 4",             TS - timedelta(hours=8)),
+        ("market rally strong 5",                TS - timedelta(hours=10)),
+        ("revenue surge targets 6",              TS - timedelta(hours=12)),
+    ]
+    for h, ts in base:
+        _seed_story(conn, h, ts)
+    a = compute_entropy_change(conn, ticker="TCS", ts_emitted=TS)
+    for i in range(5):
+        _seed_story(conn, f"future {i}", TS + timedelta(days=i + 1))
+    b = compute_entropy_change(conn, ticker="TCS", ts_emitted=TS)
+    assert a["value"] == b["value"]
+    assert a["is_missing"] == b["is_missing"]
+
+
+# ── feature_health ───────────────────────────────────────────────────────────
+
+from finterminal.features.compute_reflexivity import compute_feature_health
+
+
+def test_feature_health_missing_when_inputs_missing():
+    sl = {"value": None, "is_missing": True, "confidence": 0.0,
+          "feature_version": EXPECTED_VERSION}
+    es = {"value": None, "is_missing": True, "confidence": 0.0,
+          "feature_version": EXPECTED_VERSION}
+    cell = compute_feature_health(sentiment_level=sl, entropy_sentiment=es)
+    assert cell["is_missing"] is True
+    assert cell["value"] is None
+
+
+def test_feature_health_high_when_high_confidence_low_entropy():
+    sl = {"value": 0.6, "is_missing": False, "confidence": 1.0,
+          "feature_version": EXPECTED_VERSION}
+    es = {"value": 0.0, "is_missing": False, "confidence": 1.0,
+          "feature_version": EXPECTED_VERSION}
+    cell = compute_feature_health(sentiment_level=sl, entropy_sentiment=es)
+    assert cell["is_missing"] is False
+    assert cell["value"] == pytest.approx(1.0)
+
+
+def test_feature_health_zero_when_max_entropy():
+    sl = {"value": 0.6, "is_missing": False, "confidence": 1.0,
+          "feature_version": EXPECTED_VERSION}
+    es = {"value": math.log(3), "is_missing": False, "confidence": 1.0,
+          "feature_version": EXPECTED_VERSION}
+    cell = compute_feature_health(sentiment_level=sl, entropy_sentiment=es)
+    assert cell["value"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_feature_health_zero_when_zero_confidence():
+    sl = {"value": 0.6, "is_missing": False, "confidence": 0.0,
+          "feature_version": EXPECTED_VERSION}
+    es = {"value": 0.0, "is_missing": False, "confidence": 1.0,
+          "feature_version": EXPECTED_VERSION}
+    cell = compute_feature_health(sentiment_level=sl, entropy_sentiment=es)
+    assert cell["value"] == pytest.approx(0.0)
