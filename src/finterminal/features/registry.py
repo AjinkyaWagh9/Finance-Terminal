@@ -41,10 +41,12 @@ V1_FEATURES: tuple[FeatureSpec, ...] = (
     FeatureSpec("leverage",        "leverage",          "fundamentals"),
     FeatureSpec("earnings_growth", "earnings_growth",   "fundamentals"),
     FeatureSpec("quality_score",   "quality_score",     "derived"),
-    # Reflexivity placeholders (#4 fills these)
-    FeatureSpec("sentiment_level",         None, "Grok / news (#4)"),
-    FeatureSpec("sentiment_delta",         None, "derived (#4)"),
-    FeatureSpec("entropy_sentiment",       None, "derived (#4)"),
+    # Reflexivity (#4)
+    FeatureSpec("sentiment_level",   "compute_sentiment_level",   "news_stories"),
+    FeatureSpec("sentiment_delta",   "compute_sentiment_delta",   "derived"),
+    FeatureSpec("entropy_sentiment", "compute_entropy_sentiment", "derived"),
+    FeatureSpec("entropy_change",    "compute_entropy_change",    "derived"),
+    FeatureSpec("feature_health",    "compute_feature_health",    "derived"),
 )
 
 COMPUTABLE_NAMES:  tuple[str, ...] = tuple(f.name for f in V1_FEATURES if f.compute is not None)

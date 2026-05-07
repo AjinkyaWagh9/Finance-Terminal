@@ -4,8 +4,8 @@ from datetime import datetime
 from typing import Any
 import duckdb
 
-from .registry import V1_FEATURES, PLACEHOLDER_NAMES
-from . import compute_price, compute_regime, compute_news, compute_quality
+from .registry import V1_FEATURES
+from . import compute_price, compute_regime, compute_news, compute_quality, compute_reflexivity
 from finterminal.outcomes.schema import SignalType
 
 def compute_for_signal(conn: duckdb.DuckDBPyConnection, *,
@@ -63,9 +63,18 @@ def compute_for_signal(conn: duckdb.DuckDBPyConnection, *,
         earnings_growth_value=eg_v, **ctx)
     out["quality_score"] = {"value": qs_v, "is_missing": qs_m}
 
-    # Placeholders (reflexivity — #4 fills these)
-    for name in PLACEHOLDER_NAMES:
-        out[name] = {"value": None, "is_missing": True}
+    # Reflexivity block (#4) — DB-backed first, then meta-signal
+    sl_cell = compute_reflexivity.compute_sentiment_level(conn, **ctx)
+    out["sentiment_level"] = sl_cell
+    out["sentiment_delta"] = compute_reflexivity.compute_sentiment_delta(conn, **ctx)
+    es_cell = compute_reflexivity.compute_entropy_sentiment(conn, **ctx)
+    out["entropy_sentiment"] = es_cell
+    out["entropy_change"]    = compute_reflexivity.compute_entropy_change(conn, **ctx)
+    # feature_health: meta-signal over already-computed cells, no extra DB hit
+    out["feature_health"] = compute_reflexivity.compute_feature_health(
+        sentiment_level=sl_cell,
+        entropy_sentiment=es_cell,
+    )
 
     # Invariant: every registered feature is materialized for every signal.
     # Use raise (not assert) so `python -O` cannot silently strip the check.

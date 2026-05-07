@@ -4,7 +4,7 @@ import json, uuid
 from finterminal.data.duckdb_store import connect
 from finterminal.market_data.store import upsert_prices_eod
 from finterminal.outcomes.schema import SignalType
-from finterminal.features.registry import COMPUTABLE_NAMES, PLACEHOLDER_NAMES, V1_FEATURES
+from finterminal.features.registry import COMPUTABLE_NAMES, V1_FEATURES
 from finterminal.features.orchestrator import compute_for_signal
 
 def _seed_full(conn):
@@ -19,7 +19,7 @@ def _seed_full(conn):
              "close":20000.0+i*2,"volume":0} for i in range(485)]
     upsert_prices_eod(conn, rows, source="test")
 
-def test_compute_for_signal_returns_18_keys(tmp_path):
+def test_compute_for_signal_output_keys_match_registry(tmp_path):
     conn = connect(str(tmp_path / "t.duckdb"))
     _seed_full(conn)
     sig_id = str(uuid.uuid4())
@@ -30,9 +30,6 @@ def test_compute_for_signal_returns_18_keys(tmp_path):
         payload={"story_count_delta": 3.0, "cluster_id": "c1"},
     )
     assert set(out.keys()) == {f.name for f in V1_FEATURES}
-    # Placeholders are all is_missing
-    for name in PLACEHOLDER_NAMES:
-        assert out[name]["is_missing"] is True and out[name]["value"] is None
 
 def test_compute_for_signal_marks_cluster_z_missing_for_other_signal_types(tmp_path):
     conn = connect(str(tmp_path / "t.duckdb"))
@@ -91,3 +88,35 @@ def test_quality_features_computed_when_fundamentals_seeded(tmp_path):
     assert out["leverage"]["is_missing"]       is False
     assert out["earnings_growth"]["is_missing"] is False
     assert out["quality_score"]["is_missing"]   is False
+
+def test_reflexivity_features_present_in_output(tmp_path):
+    conn = connect(str(tmp_path / "t.duckdb"))
+    _seed_full(conn)
+    out = compute_for_signal(
+        conn, signal_id="test-r1",
+        signal_type=SignalType.SENTIMENT_DELTA, ticker="TCS",
+        ts_emitted=datetime(2026, 4, 20, 10, 0), payload={},
+    )
+    for name in ("sentiment_level", "sentiment_delta",
+                 "entropy_sentiment", "entropy_change", "feature_health"):
+        assert name in out, f"{name} missing"
+        assert "value" in out[name] and "is_missing" in out[name]
+
+
+def test_no_placeholder_features_remain():
+    from finterminal.features.registry import PLACEHOLDER_NAMES
+    assert PLACEHOLDER_NAMES == ()
+
+
+def test_compute_for_signal_returns_20_keys(tmp_path):
+    conn = connect(str(tmp_path / "t.duckdb"))
+    _seed_full(conn)
+    out = compute_for_signal(
+        conn, signal_id="test-r2",
+        signal_type=SignalType.CLUSTER_MOMENTUM, ticker="TCS",
+        ts_emitted=datetime(2026, 4, 20, 10, 0),
+        payload={"story_count_delta": 3.0, "cluster_id": "c1"},
+    )
+    from finterminal.features.registry import V1_FEATURES
+    assert set(out.keys()) == {f.name for f in V1_FEATURES}
+    assert len(out) == 20
