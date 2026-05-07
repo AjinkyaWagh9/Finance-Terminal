@@ -7,19 +7,24 @@ def test_signal_features_table_exists(tmp_path):
     conn = connect(str(tmp_path / "t.duckdb"))
     cols = conn.execute("PRAGMA table_info('signal_features')").fetchall()
     names = {c[1] for c in cols}
-    assert names == {"signal_id", "feature_name", "feature_value", "is_missing"}
+    assert names == {
+        "signal_id", "feature_name", "feature_value", "is_missing",
+        "n_samples", "confidence", "feature_version", "normalized",
+    }
 
 def test_signal_features_pk_is_signal_id_and_feature_name(tmp_path):
     conn = connect(str(tmp_path / "t.duckdb"))
     conn.execute(
-        "INSERT INTO signal_features VALUES (?, ?, ?, ?)",
+        "INSERT INTO signal_features (signal_id, feature_name, feature_value, is_missing) "
+        "VALUES (?, ?, ?, ?)",
         ["s1", "mom_7d", 0.05, False],
     )
     # Duplicate PK must fail
     import duckdb
     try:
         conn.execute(
-            "INSERT INTO signal_features VALUES (?, ?, ?, ?)",
+            "INSERT INTO signal_features (signal_id, feature_name, feature_value, is_missing) "
+            "VALUES (?, ?, ?, ?)",
             ["s1", "mom_7d", 0.99, False],
         )
         raised = False
@@ -27,16 +32,16 @@ def test_signal_features_pk_is_signal_id_and_feature_name(tmp_path):
         raised = True
     assert raised
 
-def test_v1_features_has_18_entries():
-    assert len(V1_FEATURES) == 18
+def test_v1_features_has_20_entries():
+    assert len(V1_FEATURES) == 20
 
 def test_v1_features_unique_names():
     names = [f.name for f in V1_FEATURES]
     assert len(set(names)) == len(names)
 
-def test_computable_count_is_15_and_placeholders_3():
-    assert len(COMPUTABLE_NAMES) == 15
-    assert len(PLACEHOLDER_NAMES) == 3
+def test_computable_count_is_20_and_placeholders_0():
+    assert len(COMPUTABLE_NAMES) == 20
+    assert len(PLACEHOLDER_NAMES) == 0
 
 def test_required_feature_names_present():
     expected = {
@@ -46,6 +51,7 @@ def test_required_feature_names_present():
         "cluster_momentum_z", "narrative_price_divergence",
         "roe", "leverage", "earnings_growth", "quality_score",
         "sentiment_level", "sentiment_delta", "entropy_sentiment",
+        "entropy_change", "feature_health",
     }
     assert {f.name for f in V1_FEATURES} == expected
 
